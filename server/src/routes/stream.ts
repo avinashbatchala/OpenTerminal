@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { isSchwabConfigured } from "../providers/schwabAuth.js";
-import { schwabStreamer, type LiveQuote } from "../providers/schwabStreamer.js";
+import { schwabStreamer, type LiveCandle, type LiveQuote } from "../providers/schwabStreamer.js";
 import { getSettings } from "../settings.js";
 
 export const streamRouter = Router();
@@ -72,6 +72,68 @@ streamRouter.get("/quotes", (req, res) => {
     clearInterval(statusTimer);
     clearInterval(heartbeat);
     schwabStreamer.unsubscribe(listener);
+  };
+
+  req.on("close", cleanup);
+  req.on("aborted", cleanup);
+});
+
+streamRouter.get("/chart/:symbol", (req, res) => {
+  const symbol = String(req.params.symbol ?? "").trim().toUpperCase();
+  if (!/^[A-Z0-9.^=-]{1,20}$/.test(symbol)) {
+    res.status(400).json({ error: "invalid symbol" });
+    return;
+  }
+  if (getSettings().dataSource === "public") {
+    res.status(503).json({ error: "Public data mode is selected in Settings" });
+    return;
+  }
+  if (!isSchwabConfigured()) {
+    res.status(503).json({ error: "Schwab streaming is not configured" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const send = (event: string, data: unknown) => {
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    }
+  };
+
+  res.write("retry: 10000\n\n");
+  const initialStatus = schwabStreamer.status();
+  let lastStatus = `${initialStatus.state}:${initialStatus.connected}`;
+  send("status", initialStatus);
+
+  const listener = (candle: LiveCandle) => send("candle", candle);
+  schwabStreamer.subscribeCandles(listener, [symbol]);
+
+  const statusTimer = setInterval(() => {
+    const status = schwabStreamer.status();
+    const key = `${status.state}:${status.connected}`;
+    if (key === lastStatus) return;
+    lastStatus = key;
+    send("status", status);
+  }, 1_000);
+  statusTimer.unref();
+
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) res.write(": ping\n\n");
+  }, 15_000);
+  heartbeat.unref();
+
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(statusTimer);
+    clearInterval(heartbeat);
+    schwabStreamer.unsubscribeCandles(listener);
   };
 
   req.on("close", cleanup);

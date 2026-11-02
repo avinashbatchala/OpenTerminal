@@ -5,7 +5,7 @@ import {
   mapSchwabQuote,
   mapSchwabSearch,
 } from "./schwab.js";
-import { parseLevelOne } from "./schwabStreamer.js";
+import { parseChartEquity, parseLevelOne } from "./schwabStreamer.js";
 
 describe("Schwab market data mapping", () => {
   it("normalizes a quote and converts yield percentages to fractions", () => {
@@ -149,5 +149,47 @@ describe("Schwab streamer frame parsing", () => {
 
   it("ignores frames without a symbol", () => {
     expect(parseLevelOne({ "3": 10 })).toBeNull();
+  });
+
+  it("parses CHART_EQUITY numeric and named frames", () => {
+    const numeric = parseChartEquity({
+      key: "AAPL",
+      "2": 230,
+      "3": 231,
+      "4": 229,
+      "5": 230.5,
+      "6": 1234,
+      "7": 1_760_000_000_000,
+    });
+    expect(numeric).toEqual({
+      symbol: "AAPL",
+      time: 1_760_000_000,
+      open: 230,
+      high: 231,
+      low: 229,
+      close: 230.5,
+      volume: 1234,
+    });
+
+    const named = parseChartEquity({
+      key: "MSFT",
+      OPEN_PRICE: 500,
+      HIGH_PRICE: 505,
+      LOW_PRICE: 498,
+      CLOSE_PRICE: 503,
+      VOLUME: 42,
+      CHART_TIME_MILLIS: 1_760_000_060_000,
+    });
+    expect(named).toMatchObject({
+      symbol: "MSFT",
+      time: 1_760_000_060,
+      open: 500,
+      close: 503,
+      volume: 42,
+    });
+  });
+
+  it("requires a CHART_EQUITY timestamp", () => {
+    expect(parseChartEquity({ key: "AAPL", "5": 230 })).toBeNull();
   });
 });

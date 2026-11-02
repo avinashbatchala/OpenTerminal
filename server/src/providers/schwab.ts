@@ -238,8 +238,8 @@ type RangeSpec = {
 };
 
 const RANGE_SPEC: Record<string, RangeSpec> = {
-  "1D": { periodType: "day", period: 1, frequencyType: "minute", frequency: 5, extended: true },
-  "5D": { periodType: "day", period: 5, frequencyType: "minute", frequency: 15, extended: true },
+  "1D": { periodType: "day", period: 1, frequencyType: "minute", frequency: 1, extended: true },
+  "5D": { periodType: "day", period: 5, frequencyType: "minute", frequency: 1, extended: true },
   "1M": { periodType: "month", period: 1, frequencyType: "daily", frequency: 1, extended: false },
   "6M": { periodType: "month", period: 6, frequencyType: "daily", frequency: 1, extended: false },
   YTD: { periodType: "ytd", period: 1, frequencyType: "daily", frequency: 1, extended: false },
@@ -269,17 +269,67 @@ export function mapSchwabCandles(candles: SchwabCandle[] | undefined): Candle[] 
   return out;
 }
 
+function timeZoneOffsetMinutes(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUTC = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+  return (asUTC - date.getTime()) / 60_000;
+}
+
+/** Midnight in the New York trading day, as an epoch timestamp. */
+function newYorkStartOfDay(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const midnightUTCGuess = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day));
+  const offset = timeZoneOffsetMinutes(new Date(midnightUTCGuess + 12 * 3_600_000), "America/New_York");
+  return midnightUTCGuess - offset * 60_000;
+}
+
 export async function history(symbol: string, rangeKey: string): Promise<Candle[]> {
   const spec = RANGE_SPEC[rangeKey] ?? RANGE_SPEC["6M"];
   const params = new URLSearchParams({
     symbol,
-    periodType: spec.periodType,
-    period: String(spec.period),
     frequencyType: spec.frequencyType,
     frequency: String(spec.frequency),
     needExtendedHoursData: String(spec.extended),
     needPreviousClose: "true",
   });
+
+  if (rangeKey === "1D" || rangeKey === "5D") {
+    // Schwab's period=day counters return the last *completed* session, which
+    // leaves the chart a day behind during market hours. Explicit dates include
+    // today's current session, so CHART_EQUITY bars line up with the history.
+    const end = Date.now();
+    const start = newYorkStartOfDay(new Date(end)) - (rangeKey === "5D" ? 7 * 86_400_000 : 0);
+    params.set("periodType", "day");
+    params.set("startDate", String(start));
+    params.set("endDate", String(end));
+  } else {
+    params.set("periodType", spec.periodType);
+    params.set("period", String(spec.period));
+  }
+
   const json = await get<{ candles?: SchwabCandle[]; empty?: boolean }>(
     `/marketdata/v1/pricehistory?${params.toString()}`
   );

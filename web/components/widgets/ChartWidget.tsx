@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createChart,
   CandlestickSeries,
@@ -12,7 +12,8 @@ import {
   type IChartApi,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { apiGet, fmt, fmtBig, type Candle } from "../../lib/api";
+import { apiGet, fmt, fmtBig, type Candle, type Quote } from "../../lib/api";
+import { mergeLiveQuote, useLiveCandle, useLiveQuotes, type LiveCandle } from "../../lib/live";
 import { sma, ema, vwap, rsi, macd, bollinger, type Point } from "../../lib/indicators";
 import { useWidgetSymbol, type WidgetInstance } from "../../store/terminal";
 
@@ -23,9 +24,75 @@ const INDICATORS = ["SMA20", "SMA50", "SMA200", "EMA20", "VWAP", "BOLL", "RSI", 
 type Range = (typeof RANGES)[number];
 type ChartType = (typeof CHART_TYPES)[number];
 type Indicator = (typeof INDICATORS)[number];
+type ChartQuote = Pick<Quote, "symbol" | "price" | "open" | "high" | "low" | "volume">;
 
 const ts = (t: number) => t as UTCTimestamp;
 const toMap = (pts: Point[]) => new Map(pts.map((p) => [p.time, p.value]));
+
+function candleFromLive(live: LiveCandle): Candle | null {
+  if (live.close === null) return null;
+  return {
+    time: live.time,
+    open: live.open ?? live.close,
+    high: live.high ?? live.close,
+    low: live.low ?? live.close,
+    close: live.close,
+    volume: live.volume ?? 0,
+  };
+}
+
+function newYorkParts(date: Date): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return { year: Number(values.year), month: Number(values.month), day: Number(values.day) };
+}
+
+function timeZoneOffsetMinutes(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUTC = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+  return (asUTC - date.getTime()) / 60_000;
+}
+
+function newYorkMidnightSeconds(year: number, month: number, day: number): number {
+  const guess = Date.UTC(year, month - 1, day);
+  const offset = timeZoneOffsetMinutes(new Date(guess + 12 * 3_600_000));
+  return Math.round((guess - offset * 60_000) / 1000);
+}
+
+function currentBucketTime(range: Range, now = new Date()): number {
+  const { year, month, day } = newYorkParts(now);
+  const midnight = newYorkMidnightSeconds(year, month, day);
+  if (range === "1M" || range === "6M" || range === "YTD" || range === "1Y") {
+    return midnight;
+  }
+  if (range === "5Y") {
+    const weekday = new Date(midnight * 1000).getUTCDay();
+    return midnight - ((weekday + 6) % 7) * 86_400;
+  }
+  return newYorkMidnightSeconds(year, month, 1);
+}
 
 const INDICATOR_COLOR: Record<string, string> = {
   SMA20: "#ffd60a", SMA50: "#64d2ff", SMA200: "#bf5af2", EMA20: "#ff9f0a",
@@ -38,17 +105,43 @@ const ACCENT_COLOR = "#ff9f0a";
 
 export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
   const symbol = useWidgetSymbol(widget);
-  const [range, setRange] = useState<Range>("6M");
+  const [range, setRange] = useState<Range>("1D");
   const [chartType, setChartType] = useState<ChartType>("candles");
   const [active, setActive] = useState<Set<Indicator>>(new Set(["SMA20"]));
   const [legend, setLegend] = useState<Candle | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const mainSeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
+  const lastCandleTimeRef = useRef(0);
+  const lastCandleRef = useRef<Candle | null>(null);
+  const hoveringRef = useRef(false);
+  const liveCandleRef = useRef<LiveCandle | null>(null);
+  const liveQuoteRef = useRef<ChartQuote | null>(null);
+
+  const intraday = range === "1D" || range === "5D";
+  const { candle: liveCandle, connected: liveConnected } = useLiveCandle(symbol, intraday);
+  const { quotes: liveQuotes, connected: quoteConnected } = useLiveQuotes([symbol]);
+  // Share the quote widget's query and polling cadence, including when SSE
+  // is unavailable (public providers, disconnected socket, or no Schwab auth).
+  const { data: quoteSnapshot } = useQuery({
+    queryKey: ["quote", symbol],
+    queryFn: async () => (await apiGet<Quote[]>(`/api/quotes?symbols=${encodeURIComponent(symbol)}`))[0],
+    refetchInterval: quoteConnected ? 15_000 : 1_000,
+  });
+  const liveQuote = useMemo(
+    () => quoteSnapshot ? mergeLiveQuote(quoteSnapshot, liveQuotes[symbol]) : liveQuotes[symbol],
+    [quoteSnapshot, liveQuotes, symbol]
+  );
+  const chartLive = (intraday && liveConnected) || (quoteConnected && liveQuotes[symbol]?.price != null);
+  const lastLivePrice = liveQuote?.price ?? liveCandle?.close ?? null;
 
   const { data: candles, error } = useQuery({
     queryKey: ["history", symbol, range],
     queryFn: () => apiGet<Candle[]>(`/api/history/${encodeURIComponent(symbol)}?range=${range}`),
-    refetchInterval: range === "1D" ? 8_000 : 60_000,
+    // Streaming updates the current bar in place. Polling remains the fallback
+    // when Schwab streaming is unavailable, and a slow refresh repairs gaps.
+    refetchInterval: chartLive ? 60_000 : range === "1D" ? 8_000 : 60_000,
   });
 
   // Fast time -> candle lookup for the crosshair legend, independent of chart type.
@@ -126,9 +219,128 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     return rows;
   }, [legend, indicatorMaps]);
 
+  const applyLiveCandle = useCallback(
+    (live: LiveCandle) => {
+      const series = mainSeriesRef.current;
+      const candle = candleFromLive(live);
+      if (!intraday || !series || !candle || live.symbol !== symbol || live.time < lastCandleTimeRef.current) return;
+
+      lastCandleTimeRef.current = live.time;
+      const time = ts(live.time);
+      if (chartType === "candles" || chartType === "bars") {
+        series.update({
+          time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+        });
+      } else {
+        series.update({ time, value: candle.close });
+      }
+
+      volumeSeriesRef.current?.update({
+        time,
+        value: candle.volume,
+        color: candle.close >= candle.open ? "rgba(48,209,88,0.32)" : "rgba(255,69,58,0.32)",
+      });
+
+      lastCandleRef.current = candle;
+      if (!hoveringRef.current) setLegend(candle);
+    },
+    [chartType, symbol, intraday]
+  );
+
+  const applyLiveQuote = useCallback(
+    (quote: ChartQuote | null | undefined) => {
+      if (!quote || quote.symbol !== symbol || quote.price === null) return;
+      const series = mainSeriesRef.current;
+      if (!series) return;
+
+      const price = quote.price;
+      const last = lastCandleRef.current;
+      let bucket: number;
+      let candle: Candle;
+      let isNew: boolean;
+      let updateVolume: boolean;
+
+      if (intraday) {
+        // LEVELONE quotes arrive every second. Use them to move the current
+        // minute bar even before CHART_EQUITY sends its next frame.
+        bucket = Math.floor(Date.now() / 60_000) * 60;
+        if (!last || bucket < last.time) return;
+        isNew = bucket > last.time;
+        candle = isNew
+          ? { time: bucket, open: price, high: price, low: price, close: price, volume: 0 }
+          : {
+              ...last,
+              close: price,
+              high: Math.max(last.high, price),
+              low: Math.min(last.low, price),
+            };
+        updateVolume = isNew;
+      } else {
+        bucket = currentBucketTime(range);
+        isNew = !last || bucket > last.time;
+        if (isNew) {
+          candle = {
+            time: bucket,
+            open: quote.open ?? price,
+            high: Math.max(quote.high ?? price, price),
+            low: Math.min(quote.low ?? price, price),
+            close: price,
+            volume: quote.volume ?? 0,
+          };
+        } else if (last && bucket === last.time) {
+          candle = {
+            ...last,
+            close: price,
+            high: Math.max(last.high, quote.high ?? price, price),
+            low: Math.min(last.low, quote.low ?? price, price),
+          };
+          if (range !== "5Y" && range !== "MAX") candle.volume = quote.volume ?? last.volume;
+        } else {
+          return;
+        }
+        updateVolume = isNew || (range !== "5Y" && range !== "MAX");
+      }
+
+      lastCandleRef.current = candle;
+      lastCandleTimeRef.current = candle.time;
+      const time = ts(candle.time);
+      if (chartType === "candles" || chartType === "bars") {
+        series.update({
+          time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+        });
+      } else {
+        series.update({ time, value: candle.close });
+      }
+
+      if (updateVolume) {
+        volumeSeriesRef.current?.update({
+          time,
+          value: candle.volume,
+          color: candle.close >= candle.open ? "rgba(48,209,88,0.32)" : "rgba(255,69,58,0.32)",
+        });
+      }
+      if (!hoveringRef.current) setLegend(candle);
+    },
+    [chartType, intraday, range, symbol]
+  );
+
   useEffect(() => {
-    setLegend(candles && candles.length > 0 ? candles[candles.length - 1] : null);
-  }, [candles]);
+    liveCandleRef.current = liveCandle;
+    if (liveCandle) applyLiveCandle(liveCandle);
+  }, [liveCandle, applyLiveCandle]);
+
+  useEffect(() => {
+    liveQuoteRef.current = liveQuote ?? null;
+    if (liveQuote) applyLiveQuote(liveQuote);
+  }, [liveQuote, applyLiveQuote]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -151,32 +363,37 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     const downColor = DOWN_COLOR;
 
     if (chartType === "candles") {
-      chart
-        .addSeries(CandlestickSeries, {
-          upColor, downColor, borderUpColor: upColor, borderDownColor: downColor,
-          wickUpColor: upColor, wickDownColor: downColor,
-        })
-        .setData(candles.map((c) => ({ time: ts(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
+      const series = chart.addSeries(CandlestickSeries, {
+        upColor, downColor, borderUpColor: upColor, borderDownColor: downColor,
+        wickUpColor: upColor, wickDownColor: downColor,
+      });
+      series.setData(candles.map((c) => ({ time: ts(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
+      mainSeriesRef.current = series;
     } else if (chartType === "bars") {
-      chart
-        .addSeries(BarSeries, { upColor, downColor })
-        .setData(candles.map((c) => ({ time: ts(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
+      const series = chart.addSeries(BarSeries, { upColor, downColor });
+      series.setData(candles.map((c) => ({ time: ts(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
+      mainSeriesRef.current = series;
     } else if (chartType === "line") {
-      chart
-        .addSeries(LineSeries, { color: ACCENT_COLOR, lineWidth: 1 })
-        .setData(candles.map((c) => ({ time: ts(c.time), value: c.close })));
+      const series = chart.addSeries(LineSeries, { color: ACCENT_COLOR, lineWidth: 1 });
+      series.setData(candles.map((c) => ({ time: ts(c.time), value: c.close })));
+      mainSeriesRef.current = series;
     } else {
-      chart
-        .addSeries(AreaSeries, { lineColor: ACCENT_COLOR, topColor: "rgba(255,159,10,0.18)", bottomColor: "rgba(255,159,10,0)" })
-        .setData(candles.map((c) => ({ time: ts(c.time), value: c.close })));
+      const series = chart.addSeries(AreaSeries, { lineColor: ACCENT_COLOR, topColor: "rgba(255,159,10,0.18)", bottomColor: "rgba(255,159,10,0)" });
+      series.setData(candles.map((c) => ({ time: ts(c.time), value: c.close })));
+      mainSeriesRef.current = series;
     }
 
     // volume histogram on its own scale at the bottom of the main pane
     const vol = chart.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" } });
+    volumeSeriesRef.current = vol;
     vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     vol.setData(
       candles.map((c) => ({ time: ts(c.time), value: c.volume, color: c.close >= c.open ? "rgba(48,209,88,0.32)" : "rgba(255,69,58,0.32)" }))
     );
+    lastCandleTimeRef.current = candles[candles.length - 1].time;
+    lastCandleRef.current = candles[candles.length - 1];
+    hoveringRef.current = false;
+    setLegend(lastCandleRef.current);
 
     const overlay = (points: Point[], color: string) =>
       chart.addSeries(LineSeries, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false })
@@ -214,19 +431,34 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.time) {
-        setLegend(candles[candles.length - 1]);
+        hoveringRef.current = false;
+        setLegend(lastCandleRef.current);
         return;
       }
-      const hit = byTime.get(param.time as number);
+      hoveringRef.current = true;
+      const hit = lastCandleRef.current?.time === param.time
+        ? lastCandleRef.current
+        : byTime.get(param.time as number);
       if (hit) setLegend(hit);
     });
 
     chart.timeScale().fitContent();
+    if (liveCandleRef.current) {
+      applyLiveCandle(liveCandleRef.current);
+      chart.timeScale().fitContent();
+    }
+    if (liveQuoteRef.current) {
+      applyLiveQuote(liveQuoteRef.current);
+      chart.timeScale().fitContent();
+    }
+
     return () => {
       chart.remove();
       chartRef.current = null;
+      mainSeriesRef.current = null;
+      volumeSeriesRef.current = null;
     };
-  }, [candles, chartType, indicatorData, range, byTime]);
+  }, [candles, chartType, indicatorData, range, byTime, applyLiveCandle, applyLiveQuote]);
 
   const toggleIndicator = (ind: Indicator) =>
     setActive((prev) => {
@@ -256,6 +488,14 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
             {ind}
           </button>
         ))}
+        <span
+          className={`ml-auto text-[10px] ${chartLive ? "up" : "dim"}`}
+          data-live={chartLive ? "1" : "0"}
+          data-live-price={lastLivePrice ?? ""}
+          title={chartLive ? "Streaming updates" : "REST polling fallback"}
+        >
+          {chartLive ? `● LIVE ${fmt(lastLivePrice)}` : "○ REST"}
+        </span>
       </div>
       {error && <div className="p-2 down">Error: {(error as Error).message}</div>}
       <div className="relative flex-1 min-h-0">
