@@ -78,13 +78,13 @@ function MacroBody({
       <div className="h-24 px-1">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data.yields} margin={{ top: 4, right: 12, bottom: 0, left: -22 }}>
-            <XAxis dataKey="tenor" stroke="#808080" fontSize={9} />
-            <YAxis stroke="#808080" fontSize={9} domain={["auto", "auto"]} />
+            <XAxis dataKey="tenor" stroke="#8e8e93" fontSize={9} />
+            <YAxis stroke="#8e8e93" fontSize={9} domain={["auto", "auto"]} />
             <Tooltip
-              contentStyle={{ background: "#111", border: "1px solid #262626", fontSize: 10 }}
-              labelStyle={{ color: "#808080" }}
+              contentStyle={{ background: "#1c1c1e", border: "1px solid #3a3a3c", fontSize: 10 }}
+              labelStyle={{ color: "#8e8e93" }}
             />
-            <Line type="monotone" dataKey="value" stroke="#ff9900" strokeWidth={1.5} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="value" stroke="#ff9f0a" strokeWidth={1.5} dot={{ r: 2 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
