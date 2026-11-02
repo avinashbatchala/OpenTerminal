@@ -121,6 +121,26 @@ function schwabSourceEnabled(): boolean {
   return getSettings().dataSource === "schwab" && schwab.isSchwabEnabled();
 }
 
+// withFallback only treats thrown errors as failures. Providers can legally
+// return an empty array for an unsupported symbol, which must fall through to
+// the next source rather than failing the whole request afterward.
+async function requireRows<T>(label: string, fn: () => Promise<T[]>): Promise<T[]> {
+  const rows = await fn();
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${label}: empty result`);
+  return rows;
+}
+
+async function requireChain<T extends { expirationDates: string[] }>(
+  label: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const chain = await fn();
+  if (!chain || !Array.isArray(chain.expirationDates) || chain.expirationDates.length === 0) {
+    throw new Error(`${label}: empty option chain`);
+  }
+  return chain;
+}
+
 async function getQuotes(symbols: string[]): Promise<yahoo.Quote[]> {
   const fresh = new Map<string, yahoo.Quote>();
   const missing: string[] = [];
@@ -261,11 +281,19 @@ marketRouter.get("/history/:symbol", async (req, res) => {
       if (isVix(symbol)) return vixHistory(rangeKey);
 
       const attempts: Array<[string, () => Promise<yahoo.Candle[]>]> = [];
-      if (schwabSourceEnabled()) attempts.push(["schwab", () => schwab.history(symbol, rangeKey)]);
+      if (schwabSourceEnabled()) {
+        attempts.push(["schwab", () => requireRows("schwab", () => schwab.history(symbol, rangeKey))]);
+      }
       attempts.push(
-        ["nasdaq", () => nasdaq.history(symbol, rangeKey)],
-        ["yahoo", () => yahoo.history(symbol, yahooRange(rangeKey).range, yahooRange(rangeKey).interval)],
-        ["stooq", () => stooq.history(symbol)]
+        ["nasdaq", () => requireRows("nasdaq", () => nasdaq.history(symbol, rangeKey))],
+        [
+          "yahoo",
+          () =>
+            requireRows("yahoo", () =>
+              yahoo.history(symbol, yahooRange(rangeKey).range, yahooRange(rangeKey).interval)
+            ),
+        ],
+        ["stooq", () => requireRows("stooq", () => stooq.history(symbol))]
       );
       return withFallback(attempts);
     });
@@ -298,10 +326,12 @@ marketRouter.get("/search", async (req, res) => {
   try {
     const data = await cached(`search:${q.toLowerCase()}`, 300_000, () => {
       const attempts: Array<[string, () => Promise<yahoo.SearchResult[]>]> = [];
-      if (schwabSourceEnabled()) attempts.push(["schwab", () => schwab.search(q)]);
+      if (schwabSourceEnabled()) {
+        attempts.push(["schwab", () => requireRows("schwab", () => schwab.search(q))]);
+      }
       attempts.push(
-        ["tradingview", () => tradingview.search(q)],
-        ["yahoo", () => yahoo.search(q)]
+        ["tradingview", () => requireRows("tradingview", () => tradingview.search(q))],
+        ["yahoo", () => requireRows("yahoo", () => yahoo.search(q))]
       );
       return withFallback(attempts);
     });
@@ -356,22 +386,28 @@ marketRouter.get("/options/:symbol", async (req, res) => {
   try {
     const data = await cached(`options:${symbol}:${expiry ?? "front"}`, 60_000, () => {
       const attempts: Array<[string, () => Promise<any>]> = [];
-      if (schwabSourceEnabled()) attempts.push(["schwab", () => schwab.optionChain(symbol, expiry)]);
+      if (schwabSourceEnabled()) {
+        attempts.push([
+          "schwab",
+          () => requireChain("schwab", () => schwab.optionChain(symbol, expiry)),
+        ]);
+      }
       attempts.push(
-        ["nasdaq", () => nasdaq.optionChain(symbol, expiry)],
+        ["nasdaq", () => requireChain("nasdaq", () => nasdaq.optionChain(symbol, expiry))],
         [
           "yahoo",
-          async () => {
-            const y = await yahoo.options(symbol);
-            return {
-              symbol: y.symbol,
-              underlyingPrice: y.underlyingPrice,
-              expirationDates: y.expirationDates.map((d: number) => new Date(d * 1000).toISOString().slice(0, 10)),
-              selectedDate: y.selectedDate ? new Date(y.selectedDate * 1000).toISOString().slice(0, 10) : null,
-              calls: y.calls,
-              puts: y.puts,
-            };
-          },
+          () =>
+            requireChain("yahoo", async () => {
+              const y = await yahoo.options(symbol);
+              return {
+                symbol: y.symbol,
+                underlyingPrice: y.underlyingPrice,
+                expirationDates: y.expirationDates.map((d: number) => new Date(d * 1000).toISOString().slice(0, 10)),
+                selectedDate: y.selectedDate ? new Date(y.selectedDate * 1000).toISOString().slice(0, 10) : null,
+                calls: y.calls,
+                puts: y.puts,
+              };
+            }),
         ]
       );
       return withFallback(attempts);
@@ -760,12 +796,18 @@ marketRouter.get("/earnings-history/:symbol", async (req, res) => {
     const data = await cached(`earnings-history:${symbol}`, 3_600_000, async () => {
       const historyAttempts: Array<[string, () => Promise<yahoo.Candle[]>]> = [];
       if (schwabSourceEnabled()) {
-        historyAttempts.push(["schwab", () => schwab.history(symbol, "1Y")]);
+        historyAttempts.push(["schwab", () => requireRows("schwab", () => schwab.history(symbol, "1Y"))]);
       }
       historyAttempts.push(
-        ["nasdaq", () => nasdaq.history(symbol, "1Y")],
-        ["yahoo", () => yahoo.history(symbol, yahooRange("1Y").range, yahooRange("1Y").interval)],
-        ["stooq", () => stooq.history(symbol)]
+        ["nasdaq", () => requireRows("nasdaq", () => nasdaq.history(symbol, "1Y"))],
+        [
+          "yahoo",
+          () =>
+            requireRows("yahoo", () =>
+              yahoo.history(symbol, yahooRange("1Y").range, yahooRange("1Y").interval)
+            ),
+        ],
+        ["stooq", () => requireRows("stooq", () => stooq.history(symbol))]
       );
       const [surprises, candles] = await Promise.all([
         nasdaq.earningsSurprise(symbol),

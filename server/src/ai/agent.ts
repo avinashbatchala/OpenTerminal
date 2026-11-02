@@ -6,6 +6,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from "@anthropic-ai/sdk/resources/messages";
+import { mapWithConcurrency } from "../concurrency.js";
 import { AI_TOOLS, executeTool, type ToolExecution } from "./tools.js";
 
 export type AgentClient = {
@@ -21,6 +22,8 @@ export type AgentOptions = {
   messages: MessageParam[];
   context?: unknown;
   maxRounds?: number;
+  maxToolCalls?: number;
+  toolConcurrency?: number;
   execute?: typeof executeTool;
 };
 
@@ -30,6 +33,8 @@ export type AgentResult = {
 };
 
 const DEFAULT_MAX_ROUNDS = 5;
+const DEFAULT_MAX_TOOL_CALLS = 12;
+const DEFAULT_TOOL_CONCURRENCY = 3;
 
 function textOf(response: Message | null): string {
   if (!response) return "";
@@ -48,6 +53,8 @@ function textOf(response: Message | null): string {
 export async function runAgent(options: AgentOptions): Promise<AgentResult> {
   const execute = options.execute ?? executeTool;
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  const maxToolCalls = options.maxToolCalls ?? DEFAULT_MAX_TOOL_CALLS;
+  const toolConcurrency = Math.max(1, options.toolConcurrency ?? DEFAULT_TOOL_CONCURRENCY);
   const toolCalls: ToolExecution[] = [];
   const messages: MessageParam[] = [];
 
@@ -88,18 +95,35 @@ export async function runAgent(options: AgentOptions): Promise<AgentResult> {
       return { text: textOf(response), toolCalls };
     }
 
-    const results = await Promise.all(
-      toolUses.map(async (block): Promise<ToolResultBlockParam> => {
+    const remaining = maxToolCalls - toolCalls.length;
+    const allowed = remaining > 0 ? toolUses.slice(0, remaining) : [];
+    const blocked = toolUses.slice(allowed.length);
+    const executions: Array<ToolExecution | undefined> = new Array(allowed.length);
+
+    const results = await mapWithConcurrency(
+      allowed,
+      toolConcurrency,
+      async (block, index): Promise<ToolResultBlockParam> => {
         const result = await execute(block.name, block.input);
-        toolCalls.push(result.execution);
+        executions[index] = result.execution;
         return {
           type: "tool_result",
           tool_use_id: block.id,
           content: result.content,
           is_error: result.isError,
         };
-      })
+      }
     );
+    toolCalls.push(...executions.filter((execution): execution is ToolExecution => Boolean(execution)));
+
+    for (const block of blocked) {
+      results.push({
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: JSON.stringify({ error: "tool-call budget exhausted for this request" }),
+        is_error: true,
+      });
+    }
 
     messages.push({ role: "user", content: results });
   }

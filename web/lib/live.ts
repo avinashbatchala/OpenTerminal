@@ -41,21 +41,30 @@ export function useLiveQuotes(symbols: string[]): {
   const key = symbols.map((s) => s.trim().toUpperCase()).filter(Boolean).join(",");
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
   const [connected, setConnected] = useState(false);
+  const [receiving, setReceiving] = useState(false);
 
   useEffect(() => {
+    setQuotes({});
     setConnected(false);
-    if (!key) {
-      setQuotes({});
-      return;
-    }
+    setReceiving(false);
+    if (!key) return;
 
     let source: EventSource | null = null;
     let active = true;
+    let lastEventAt = 0;
+
+    const clearStream = () => {
+      setConnected(false);
+      setReceiving(false);
+      setQuotes({});
+    };
 
     const onQuote = (event: MessageEvent) => {
       try {
         const quote = JSON.parse(event.data) as LiveQuote;
         if (!active || !quote.symbol) return;
+        lastEventAt = Date.now();
+        setReceiving(true);
         setQuotes((previous) => ({ ...previous, [quote.symbol]: quote }));
       } catch {
         // Ignore malformed events; EventSource will keep the stream open.
@@ -65,7 +74,12 @@ export function useLiveQuotes(symbols: string[]): {
     const onStatus = (event: MessageEvent) => {
       try {
         const status = JSON.parse(event.data) as { connected?: boolean };
-        if (active) setConnected(Boolean(status.connected));
+        if (!active) return;
+        setConnected(Boolean(status.connected));
+        if (!status.connected) {
+          setReceiving(false);
+          setQuotes({});
+        }
       } catch {
         // ignore
       }
@@ -75,16 +89,25 @@ export function useLiveQuotes(symbols: string[]): {
     source.addEventListener("quote", onQuote as EventListener);
     source.addEventListener("status", onStatus as EventListener);
     source.onerror = () => {
-      if (active) setConnected(false);
+      if (active) clearStream();
     };
+
+    // A half-open stream must not keep overlaying old prices on REST data.
+    const freshness = setInterval(() => {
+      if (active && lastEventAt > 0 && Date.now() - lastEventAt > 90_000) {
+        setReceiving(false);
+        setQuotes({});
+      }
+    }, 15_000);
 
     return () => {
       active = false;
+      clearInterval(freshness);
       source?.close();
     };
   }, [key]);
 
-  return { quotes, connected };
+  return { quotes: receiving ? quotes : {}, connected: connected && receiving };
 }
 
 /**
@@ -126,7 +149,12 @@ export function useLiveCandle(symbol: string, enabled = true): {
     const onStatus = (event: MessageEvent) => {
       try {
         const status = JSON.parse(event.data) as { connected?: boolean };
-        if (active) setConnected(Boolean(status.connected));
+        if (!active) return;
+        setConnected(Boolean(status.connected));
+        if (!status.connected) {
+          setReceiving(false);
+          setCandle(null);
+        }
       } catch {
         // ignore
       }
@@ -136,7 +164,10 @@ export function useLiveCandle(symbol: string, enabled = true): {
     source.addEventListener("candle", onCandle as EventListener);
     source.addEventListener("status", onStatus as EventListener);
     source.onerror = () => {
-      if (active) setConnected(false);
+      if (!active) return;
+      setConnected(false);
+      setReceiving(false);
+      setCandle(null);
     };
 
     // If the socket is connected but chart frames stop arriving (market
@@ -145,6 +176,7 @@ export function useLiveCandle(symbol: string, enabled = true): {
     const freshness = setInterval(() => {
       if (active && lastEventAt > 0 && Date.now() - lastEventAt > 90_000) {
         setReceiving(false);
+        setCandle(null);
       }
     }, 15_000);
 
@@ -155,7 +187,7 @@ export function useLiveCandle(symbol: string, enabled = true): {
     };
   }, [symbol, enabled]);
 
-  return { candle, connected: connected && receiving };
+  return { candle: receiving ? candle : null, connected: connected && receiving };
 }
 
 /**

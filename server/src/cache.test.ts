@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cached, cacheGet, cacheSet, staleGet, staleSet } from "./cache.js";
+import { cacheClear, cached, cacheGet, cacheSet, staleGet, staleSet } from "./cache.js";
 
 describe("cache", () => {
   it("stores and retrieves values within TTL", () => {
@@ -44,5 +44,13 @@ describe("cache", () => {
     }
     expect(staleGet("stale-flood-0")).toBeUndefined();
     expect(staleGet("stale-flood-1000")).toBe(1000);
+  });
+
+  it("clears both fresh and stale entries on mode changes", () => {
+    cacheSet("clear-fresh", 1, 60_000);
+    staleSet("clear-stale", 2);
+    cacheClear();
+    expect(cacheGet("clear-fresh")).toBeUndefined();
+    expect(staleGet("clear-stale")).toBeUndefined();
   });
 });

@@ -75,3 +75,9 @@ export function cacheStore(key: string, value: unknown, ttlMs: number): void {
   staleSet(key, value);
 }
 
+/** Drop all cached data, e.g. after the data-source mode changes. */
+export function cacheClear(): void {
+  store.clear();
+  staleStore.clear();
+}
+

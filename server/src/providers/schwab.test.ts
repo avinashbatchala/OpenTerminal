@@ -107,6 +107,27 @@ describe("Schwab market data mapping", () => {
     expect(chain.puts[0].strike).toBe(230);
   });
 
+  it("keeps the complete expiry list when filtering to one expiry", () => {
+    const chain = mapSchwabOptionChain(
+      "AAPL",
+      {
+        symbol: "AAPL",
+        underlyingPrice: 230,
+        callExpDateMap: {
+          "2026-11-06:2": {
+            "230.0": [{ strikePrice: 230, last: 4.2, bid: 4.1, ask: 4.3, totalVolume: 900, openInterest: 1200 }],
+          },
+        },
+      },
+      "2026-11-06",
+      ["2026-11-06", "2026-11-13", "2026-12-18"]
+    );
+
+    expect(chain.expirationDates).toEqual(["2026-11-06", "2026-11-13", "2026-12-18"]);
+    expect(chain.selectedDate).toBe("2026-11-06");
+    expect(chain.calls).toHaveLength(1);
+  });
+
   it("maps instrument search results", () => {
     const results = mapSchwabSearch({
       AAPL: { symbol: "AAPL", description: "Apple Inc", exchange: "Q", assetType: "EQUITY" },

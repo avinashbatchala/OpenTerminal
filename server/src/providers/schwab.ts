@@ -1,4 +1,5 @@
 import type { Quote, Candle } from "./yahoo.js";
+import { cached } from "../cache.js";
 import { schwabGet, isSchwabConfigured } from "./schwabAuth.js";
 
 // Schwab Market Data API adapter. Every call is optional: if Schwab is not
@@ -367,14 +368,17 @@ function contractsForDate(
 export function mapSchwabOptionChain(
   symbol: string,
   raw: SchwabOptionChain,
-  requestedExpiry?: string
+  requestedExpiry?: string,
+  knownDates?: string[]
 ): SchwabChain {
-  const dates = [
-    ...new Set([
-      ...Object.keys(raw.callExpDateMap ?? {}).map((k) => k.split(":")[0]),
-      ...Object.keys(raw.putExpDateMap ?? {}).map((k) => k.split(":")[0]),
-    ]),
-  ].sort();
+  const dates = knownDates && knownDates.length > 0
+    ? knownDates
+    : [
+        ...new Set([
+          ...Object.keys(raw.callExpDateMap ?? {}).map((k) => k.split(":")[0]),
+          ...Object.keys(raw.putExpDateMap ?? {}).map((k) => k.split(":")[0]),
+        ]),
+      ].sort();
 
   const selectedDate = requestedExpiry && dates.includes(requestedExpiry)
     ? requestedExpiry
@@ -394,21 +398,51 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Schwab's chains endpoint returns expirations from whatever from/to window
+ * the request used. Fetch the full expiration calendar once with a minimal
+ * strike count, then load only the selected expiry's strikes.
+ */
+async function expirationDates(symbol: string): Promise<string[]> {
+  return cached(`schwab:expirations:${symbol}`, 300_000, async () => {
+    const today = new Date();
+    const params = new URLSearchParams({
+      symbol,
+      contractType: "ALL",
+      strikeCount: "1",
+      includeUnderlyingQuote: "false",
+      strategy: "SINGLE",
+      fromDate: isoDate(today),
+      toDate: isoDate(new Date(today.getTime() + 730 * 86_400_000)),
+    });
+    const json = await get<SchwabOptionChain>(`/marketdata/v1/chains?${params.toString()}`);
+    const dates = [
+      ...new Set([
+        ...Object.keys(json.callExpDateMap ?? {}).map((k) => k.split(":")[0]),
+        ...Object.keys(json.putExpDateMap ?? {}).map((k) => k.split(":")[0]),
+      ]),
+    ].sort();
+    if (dates.length === 0) throw new Error(`schwab: no option expirations for ${symbol}`);
+    return dates;
+  });
+}
+
 export async function optionChain(symbol: string, expiry?: string): Promise<SchwabChain> {
-  const today = new Date();
-  const from = expiry ?? isoDate(today);
-  const to = expiry ?? isoDate(new Date(today.getTime() + 90 * 86_400_000));
+  const dates = await expirationDates(symbol);
+  const selected = expiry && dates.includes(expiry) ? expiry : dates[0];
+  if (!selected) throw new Error(`schwab: no option expirations for ${symbol}`);
+
   const params = new URLSearchParams({
     symbol,
     contractType: "ALL",
     strikeCount: "50",
     includeUnderlyingQuote: "true",
     strategy: "SINGLE",
-    fromDate: from,
-    toDate: to,
+    fromDate: selected,
+    toDate: selected,
   });
   const json = await get<SchwabOptionChain>(`/marketdata/v1/chains?${params.toString()}`);
-  return mapSchwabOptionChain(symbol, json, expiry);
+  return mapSchwabOptionChain(symbol, json, selected, dates);
 }
 
 export function mapSchwabSearch(raw: Record<string, SchwabInstrument>): SearchResult[] {

@@ -52,6 +52,12 @@ streamRouter.get("/quotes", (req, res) => {
   // The upstream socket can connect a moment after this SSE response starts;
   // push status changes so the browser can switch from REST polling to live.
   const statusTimer = setInterval(() => {
+    if (getSettings().dataSource === "public") {
+      send("mode", { mode: "public" });
+      cleanup();
+      res.end();
+      return;
+    }
     const status = schwabStreamer.status();
     const key = `${status.state}:${status.connected}`;
     if (key === lastStatus) return;
@@ -114,6 +120,12 @@ streamRouter.get("/chart/:symbol", (req, res) => {
   schwabStreamer.subscribeCandles(listener, [symbol]);
 
   const statusTimer = setInterval(() => {
+    if (getSettings().dataSource === "public") {
+      send("mode", { mode: "public" });
+      cleanup();
+      res.end();
+      return;
+    }
     const status = schwabStreamer.status();
     const key = `${status.state}:${status.connected}`;
     if (key === lastStatus) return;

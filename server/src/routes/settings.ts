@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { cacheClear } from "../cache.js";
 import {
   getSettings,
   publicAiSettings,
@@ -49,7 +50,9 @@ settingsRouter.put("/", (req, res) => {
   }
 
   try {
-    updateSettings(body);
+    const previousSource = getSettings().dataSource;
+    const next = updateSettings(body);
+    if (next.dataSource !== previousSource) cacheClear();
     res.json(payload());
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
