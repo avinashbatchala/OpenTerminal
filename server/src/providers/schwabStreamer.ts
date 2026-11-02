@@ -7,8 +7,8 @@ import {
 
 // Schwab's streaming API is a WebSocket whose protocol is close to the old
 // TD Ameritrade one: log in with the OAuth access token, then SUBS/ADD/UNSUBS
-// services such as LEVELONE_EQUITIES. This module keeps one upstream socket
-// alive for all browser SSE clients and fans out merged quote updates.
+// services such as LEVELONE_EQUITIES and CHART_EQUITY. This module keeps one
+// upstream socket alive for all browser SSE clients and fans out updates.
 
 export type LiveQuote = {
   symbol: string;
@@ -26,15 +26,28 @@ export type LiveQuote = {
   source: "schwab-stream";
 };
 
+export type LiveCandle = {
+  symbol: string;
+  time: number;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+  source: "schwab-stream";
+};
+
 export type StreamerStatus = {
   configured: boolean;
   state: "idle" | "connecting" | "connected" | "error";
   connected: boolean;
   subscribed: string[];
+  chartSubscribed: string[];
   error: string | null;
 };
 
-type Listener = (quote: LiveQuote) => void;
+type QuoteListener = (quote: LiveQuote) => void;
+type CandleListener = (candle: LiveCandle) => void;
 
 type WebSocketLike = {
   send(data: string): void;
@@ -53,6 +66,8 @@ type WebSocketCtor = new (url: string) => WebSocketLike;
 const LEVEL_ONE_FIELDS = [
   0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 15, 17, 18, 19, 20, 21, 22, 23, 25, 34, 35, 42,
 ].join(",");
+
+const CHART_EQUITY_FIELDS = [0, 1, 2, 3, 4, 5, 6, 7, 8].join(",");
 
 const FIELD_MAP: Array<[keyof Omit<LiveQuote, "symbol" | "source">, string, number]> = [
   ["price", "LAST_PRICE", 3],
@@ -110,6 +125,30 @@ export function parseLevelOne(content: Record<string, unknown>): Partial<LiveQuo
   return patch;
 }
 
+export function parseChartEquity(
+  content: Record<string, unknown>
+): (Partial<Omit<LiveCandle, "source">> & { symbol: string; time: number }) | null {
+  const symbol = String(content.key ?? content["0"] ?? content.SYMBOL ?? "").trim().toUpperCase();
+  const rawTime = numeric(content, "CHART_TIME_MILLIS", 7);
+  if (!symbol || rawTime === null) return null;
+
+  const patch: Partial<Omit<LiveCandle, "source">> & { symbol: string; time: number } = {
+    symbol,
+    time: Math.round(rawTime / 1000),
+  };
+  for (const [key, name, id] of [
+    ["open", "OPEN_PRICE", 2],
+    ["high", "HIGH_PRICE", 3],
+    ["low", "LOW_PRICE", 4],
+    ["close", "CLOSE_PRICE", 5],
+    ["volume", "VOLUME", 6],
+  ] as const) {
+    const value = numeric(content, name, id);
+    if (value !== null) patch[key] = value;
+  }
+  return patch;
+}
+
 function emptyQuote(symbol: string): LiveQuote {
   return {
     symbol,
@@ -124,6 +163,19 @@ function emptyQuote(symbol: string): LiveQuote {
     low: null,
     previousClose: null,
     time: null,
+    source: "schwab-stream",
+  };
+}
+
+function emptyCandle(symbol: string, time: number): LiveCandle {
+  return {
+    symbol,
+    time,
+    open: null,
+    high: null,
+    low: null,
+    close: null,
+    volume: null,
     source: "schwab-stream",
   };
 }
@@ -147,72 +199,130 @@ class SchwabStreamer {
   private loginResolve: (() => void) | null = null;
   private loginReject: ((err: Error) => void) | null = null;
 
-  private readonly listeners = new Map<Listener, Set<string>>();
-  private readonly subscribed = new Set<string>();
-  private readonly last = new Map<string, LiveQuote>();
+  private readonly quoteListeners = new Map<QuoteListener, Set<string>>();
+  private readonly chartListeners = new Map<CandleListener, Set<string>>();
+  private readonly quoteSubscribed = new Set<string>();
+  private readonly chartSubscribed = new Set<string>();
+  private readonly lastQuotes = new Map<string, LiveQuote>();
+  private readonly lastCandles = new Map<string, LiveCandle>();
 
   status(): StreamerStatus {
     return {
       configured: isSchwabConfigured(),
       state: this.state,
       connected: this.authenticated,
-      subscribed: [...this.subscribed].sort(),
+      subscribed: [...this.quoteSubscribed].sort(),
+      chartSubscribed: [...this.chartSubscribed].sort(),
       error: this.lastError,
     };
   }
 
-  subscribe(listener: Listener, symbols: string[]): void {
+  subscribe(listener: QuoteListener, symbols: string[]): void {
+    this.clearIdleTimer();
+    const normalized = this.normalizeSymbols(symbols);
+    this.quoteListeners.set(listener, new Set(normalized));
+
+    for (const symbol of normalized) {
+      const cached = this.lastQuotes.get(symbol);
+      if (cached) listener(cached);
+    }
+
+    this.startIfConfigured();
+    if (this.authenticated) {
+      const missing = normalized.filter((s) => !this.quoteSubscribed.has(s));
+      if (missing.length > 0) {
+        const command = this.quoteSubscribed.size > 0 ? "ADD" : "SUBS";
+        this.sendSubscription("LEVELONE_EQUITIES", missing, command);
+      }
+    }
+  }
+
+  unsubscribe(listener: QuoteListener): void {
+    const previous = this.quoteListeners.get(listener);
+    this.quoteListeners.delete(listener);
+    if (!previous) return;
+
+    const wanted = this.desiredSymbols(this.quoteListeners);
+    const removed = [...previous].filter((s) => !wanted.has(s) && this.quoteSubscribed.has(s));
+    if (removed.length > 0 && this.authenticated) {
+      this.sendSubscription("LEVELONE_EQUITIES", removed, "UNSUBS");
+      for (const symbol of removed) this.quoteSubscribed.delete(symbol);
+    }
+    this.scheduleIdleIfNeeded();
+  }
+
+  subscribeCandles(listener: CandleListener, symbols: string[]): void {
+    this.clearIdleTimer();
+    const normalized = this.normalizeSymbols(symbols);
+    this.chartListeners.set(listener, new Set(normalized));
+
+    for (const symbol of normalized) {
+      const cached = this.lastCandles.get(symbol);
+      if (cached) listener(cached);
+    }
+
+    this.startIfConfigured();
+    if (this.authenticated) {
+      const missing = normalized.filter((s) => !this.chartSubscribed.has(s));
+      if (missing.length > 0) {
+        // The first subscription for a service must be SUBS; ADD only extends
+        // an existing subscription.
+        const command = this.chartSubscribed.size > 0 ? "ADD" : "SUBS";
+        this.sendSubscription("CHART_EQUITY", missing, command);
+      }
+    }
+  }
+
+  unsubscribeCandles(listener: CandleListener): void {
+    const previous = this.chartListeners.get(listener);
+    this.chartListeners.delete(listener);
+    if (!previous) return;
+
+    const wanted = this.desiredSymbols(this.chartListeners);
+    const removed = [...previous].filter((s) => !wanted.has(s) && this.chartSubscribed.has(s));
+    if (removed.length > 0 && this.authenticated) {
+      this.sendSubscription("CHART_EQUITY", removed, "UNSUBS");
+      for (const symbol of removed) this.chartSubscribed.delete(symbol);
+    }
+    this.scheduleIdleIfNeeded();
+  }
+
+  private clearIdleTimer(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
+  }
 
-    const normalized = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 100);
-    this.listeners.set(listener, new Set(normalized));
+  private scheduleIdleIfNeeded(): void {
+    if (this.hasListeners()) return;
+    this.idleTimer = setTimeout(() => this.disconnect(), 60_000);
+    this.idleTimer.unref();
+  }
 
-    for (const symbol of normalized) {
-      const cached = this.last.get(symbol);
-      if (cached) listener(cached);
-    }
+  private hasListeners(): boolean {
+    return this.quoteListeners.size > 0 || this.chartListeners.size > 0;
+  }
 
+  private normalizeSymbols(symbols: string[]): string[] {
+    return [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 100);
+  }
+
+  private startIfConfigured(): void {
     if (!isSchwabConfigured()) {
       this.lastError = "Schwab streamer is not configured";
       return;
     }
-
     this.ensureConnected().catch((err: unknown) => {
       this.lastError = err instanceof Error ? err.message : String(err);
       this.state = "error";
       this.scheduleReconnect();
     });
-
-    if (this.authenticated) {
-      const missing = normalized.filter((s) => !this.subscribed.has(s));
-      if (missing.length > 0) this.sendSubscription(missing, "ADD");
-    }
   }
 
-  unsubscribe(listener: Listener): void {
-    const previous = this.listeners.get(listener);
-    this.listeners.delete(listener);
-    if (!previous) return;
-
-    const wanted = this.desiredSymbols();
-    const removed = [...previous].filter((s) => !wanted.has(s) && this.subscribed.has(s));
-    if (removed.length > 0 && this.authenticated) {
-      this.sendSubscription(removed, "UNSUBS");
-      for (const symbol of removed) this.subscribed.delete(symbol);
-    }
-
-    if (this.listeners.size === 0) {
-      this.idleTimer = setTimeout(() => this.disconnect(), 60_000);
-      this.idleTimer.unref();
-    }
-  }
-
-  private desiredSymbols(): Set<string> {
+  private desiredSymbols<T>(listeners: Map<T, Set<string>>): Set<string> {
     const out = new Set<string>();
-    for (const symbols of this.listeners.values()) for (const symbol of symbols) out.add(symbol);
+    for (const symbols of listeners.values()) for (const symbol of symbols) out.add(symbol);
     return out;
   }
 
@@ -287,12 +397,15 @@ class SchwabStreamer {
     }
 
     this.authenticated = true;
-    this.subscribed.clear();
+    this.quoteSubscribed.clear();
+    this.chartSubscribed.clear();
     this.state = "connected";
     this.lastError = null;
 
-    const symbols = [...this.desiredSymbols()];
-    if (symbols.length > 0) this.sendSubscription(symbols, "SUBS");
+    const quotes = [...this.desiredSymbols(this.quoteListeners)];
+    if (quotes.length > 0) this.sendSubscription("LEVELONE_EQUITIES", quotes, "SUBS");
+    const charts = [...this.desiredSymbols(this.chartListeners)];
+    if (charts.length > 0) this.sendSubscription("CHART_EQUITY", charts, "SUBS");
   }
 
   private sendRequest(
@@ -313,12 +426,21 @@ class SchwabStreamer {
     this.ws.send(JSON.stringify({ requests: [request] }));
   }
 
-  private sendSubscription(symbols: string[], command: "SUBS" | "ADD" | "UNSUBS"): void {
+  private sendSubscription(
+    service: "LEVELONE_EQUITIES" | "CHART_EQUITY",
+    symbols: string[],
+    command: "SUBS" | "ADD" | "UNSUBS"
+  ): void {
     if (symbols.length === 0) return;
     const parameters: Record<string, string> = { keys: symbols.join(",") };
-    if (command !== "UNSUBS") parameters.fields = LEVEL_ONE_FIELDS;
-    this.sendRequest("LEVELONE_EQUITIES", command, parameters);
-    if (command !== "UNSUBS") for (const symbol of symbols) this.subscribed.add(symbol);
+    if (command !== "UNSUBS") {
+      parameters.fields = service === "LEVELONE_EQUITIES" ? LEVEL_ONE_FIELDS : CHART_EQUITY_FIELDS;
+    }
+    this.sendRequest(service, command, parameters);
+    if (command !== "UNSUBS") {
+      const set = service === "LEVELONE_EQUITIES" ? this.quoteSubscribed : this.chartSubscribed;
+      for (const symbol of symbols) set.add(symbol);
+    }
   }
 
   private handleMessage(raw: string): void {
@@ -347,23 +469,46 @@ class SchwabStreamer {
     }
 
     for (const event of message.data ?? []) {
-      if (event.service !== "LEVELONE_EQUITIES") continue;
       const content = Array.isArray(event.content) ? event.content : [event.content];
-      for (const row of content) {
-        if (!row || typeof row !== "object") continue;
-        const patch = parseLevelOne(row as Record<string, unknown>);
-        if (!patch || Object.keys(patch).length === 1) continue;
 
-        const previous = this.last.get(patch.symbol) ?? emptyQuote(patch.symbol);
-        const next: LiveQuote = {
-          ...previous,
-          ...patch,
-          source: "schwab-stream",
-        };
-        this.last.set(next.symbol, next);
+      if (event.service === "LEVELONE_EQUITIES") {
+        for (const row of content) {
+          if (!row || typeof row !== "object") continue;
+          const patch = parseLevelOne(row as Record<string, unknown>);
+          if (!patch || Object.keys(patch).length === 1) continue;
 
-        for (const [listener, symbols] of this.listeners) {
-          if (symbols.has(next.symbol)) listener(next);
+          const previous = this.lastQuotes.get(patch.symbol) ?? emptyQuote(patch.symbol);
+          const next: LiveQuote = {
+            ...previous,
+            ...patch,
+            source: "schwab-stream",
+          };
+          this.lastQuotes.set(next.symbol, next);
+
+          for (const [listener, symbols] of this.quoteListeners) {
+            if (symbols.has(next.symbol)) listener(next);
+          }
+        }
+      } else if (event.service === "CHART_EQUITY") {
+        for (const row of content) {
+          if (!row || typeof row !== "object") continue;
+          const patch = parseChartEquity(row as Record<string, unknown>);
+          if (!patch) continue;
+
+          const previous = this.lastCandles.get(patch.symbol);
+          const base = previous && previous.time === patch.time
+            ? previous
+            : emptyCandle(patch.symbol, patch.time);
+          const next: LiveCandle = {
+            ...base,
+            ...patch,
+            source: "schwab-stream",
+          };
+          this.lastCandles.set(next.symbol, next);
+
+          for (const [listener, symbols] of this.chartListeners) {
+            if (symbols.has(next.symbol)) listener(next);
+          }
         }
       }
     }
@@ -372,12 +517,13 @@ class SchwabStreamer {
   private handleClose(): void {
     this.authenticated = false;
     this.ws = null;
-    this.subscribed.clear();
+    this.quoteSubscribed.clear();
+    this.chartSubscribed.clear();
     this.loginReject?.(new Error("Schwab streamer socket closed"));
     this.loginResolve = null;
     this.loginReject = null;
 
-    if (this.listeners.size === 0) {
+    if (!this.hasListeners()) {
       this.state = "idle";
       return;
     }
@@ -387,7 +533,7 @@ class SchwabStreamer {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimer || this.listeners.size === 0) return;
+    if (this.reconnectTimer || !this.hasListeners()) return;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.ensureConnected().catch((err: unknown) => {
@@ -410,7 +556,8 @@ class SchwabStreamer {
     }
     this.ws = null;
     this.authenticated = false;
-    this.subscribed.clear();
+    this.quoteSubscribed.clear();
+    this.chartSubscribed.clear();
     this.state = "idle";
     this.lastError = null;
   }

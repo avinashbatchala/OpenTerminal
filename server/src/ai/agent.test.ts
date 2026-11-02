@@ -137,6 +137,53 @@ describe("AI agent tool loop", () => {
     expect(result.text).toContain("tool-call limit");
   });
 
+  it("bounds tool concurrency and total tool calls", async () => {
+    const toolUses = Array.from({ length: 6 }, (_, i) => ({
+      type: "tool_use",
+      id: `tool-${i}`,
+      name: "get_quote",
+      input: { symbol: "AAPL" },
+    }));
+    const { create, client } = fakeClient([
+      { stop_reason: "tool_use", content: toolUses },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "done" }] },
+    ]);
+
+    let active = 0;
+    let maxActive = 0;
+    const execute = vi.fn().mockImplementation(async (_name: string, input: unknown) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      return {
+        content: "{}",
+        isError: false,
+        execution: { ...toolExecution, input },
+      };
+    });
+
+    const result = await runAgent({
+      client,
+      model: "test-model",
+      system: "system",
+      messages: [{ role: "user", content: "many tools" }],
+      execute,
+      maxToolCalls: 4,
+      toolConcurrency: 2,
+    });
+
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(maxActive).toBeLessThanOrEqual(2);
+    expect(result.toolCalls).toHaveLength(4);
+
+    // The array is mutated with the final assistant message after the second
+    // create call, so the tool results are the second-to-last entry.
+    const toolResults = create.mock.calls[1][0].messages.at(-2).content;
+    expect(toolResults).toHaveLength(6);
+    expect(toolResults.filter((result: { is_error?: boolean }) => result.is_error)).toHaveLength(2);
+  });
+
   it("preserves a refusal response", async () => {
     const { client } = fakeClient([{ stop_reason: "refusal", content: [] }]);
 

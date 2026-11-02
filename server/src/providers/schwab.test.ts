@@ -5,7 +5,7 @@ import {
   mapSchwabQuote,
   mapSchwabSearch,
 } from "./schwab.js";
-import { parseLevelOne } from "./schwabStreamer.js";
+import { parseChartEquity, parseLevelOne } from "./schwabStreamer.js";
 
 describe("Schwab market data mapping", () => {
   it("normalizes a quote and converts yield percentages to fractions", () => {
@@ -107,6 +107,27 @@ describe("Schwab market data mapping", () => {
     expect(chain.puts[0].strike).toBe(230);
   });
 
+  it("keeps the complete expiry list when filtering to one expiry", () => {
+    const chain = mapSchwabOptionChain(
+      "AAPL",
+      {
+        symbol: "AAPL",
+        underlyingPrice: 230,
+        callExpDateMap: {
+          "2026-11-06:2": {
+            "230.0": [{ strikePrice: 230, last: 4.2, bid: 4.1, ask: 4.3, totalVolume: 900, openInterest: 1200 }],
+          },
+        },
+      },
+      "2026-11-06",
+      ["2026-11-06", "2026-11-13", "2026-12-18"]
+    );
+
+    expect(chain.expirationDates).toEqual(["2026-11-06", "2026-11-13", "2026-12-18"]);
+    expect(chain.selectedDate).toBe("2026-11-06");
+    expect(chain.calls).toHaveLength(1);
+  });
+
   it("maps instrument search results", () => {
     const results = mapSchwabSearch({
       AAPL: { symbol: "AAPL", description: "Apple Inc", exchange: "Q", assetType: "EQUITY" },
@@ -149,5 +170,47 @@ describe("Schwab streamer frame parsing", () => {
 
   it("ignores frames without a symbol", () => {
     expect(parseLevelOne({ "3": 10 })).toBeNull();
+  });
+
+  it("parses CHART_EQUITY numeric and named frames", () => {
+    const numeric = parseChartEquity({
+      key: "AAPL",
+      "2": 230,
+      "3": 231,
+      "4": 229,
+      "5": 230.5,
+      "6": 1234,
+      "7": 1_760_000_000_000,
+    });
+    expect(numeric).toEqual({
+      symbol: "AAPL",
+      time: 1_760_000_000,
+      open: 230,
+      high: 231,
+      low: 229,
+      close: 230.5,
+      volume: 1234,
+    });
+
+    const named = parseChartEquity({
+      key: "MSFT",
+      OPEN_PRICE: 500,
+      HIGH_PRICE: 505,
+      LOW_PRICE: 498,
+      CLOSE_PRICE: 503,
+      VOLUME: 42,
+      CHART_TIME_MILLIS: 1_760_000_060_000,
+    });
+    expect(named).toMatchObject({
+      symbol: "MSFT",
+      time: 1_760_000_060,
+      open: 500,
+      close: 503,
+      volume: 42,
+    });
+  });
+
+  it("requires a CHART_EQUITY timestamp", () => {
+    expect(parseChartEquity({ key: "AAPL", "5": 230 })).toBeNull();
   });
 });

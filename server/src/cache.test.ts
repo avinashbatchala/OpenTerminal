@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { cached, cacheGet, cacheSet, staleGet, staleSet } from "./cache.js";
+import {
+  cacheClear,
+  cacheGeneration,
+  cacheStore,
+  cached,
+  cacheGet,
+  cacheSet,
+  staleGet,
+  staleSet,
+} from "./cache.js";
 
 describe("cache", () => {
   it("stores and retrieves values within TTL", () => {
@@ -44,5 +53,33 @@ describe("cache", () => {
     }
     expect(staleGet("stale-flood-0")).toBeUndefined();
     expect(staleGet("stale-flood-1000")).toBe(1000);
+  });
+
+  it("clears both fresh and stale entries on mode changes", () => {
+    cacheSet("clear-fresh", 1, 60_000);
+    staleSet("clear-stale", 2);
+    cacheClear();
+    expect(cacheGet("clear-fresh")).toBeUndefined();
+    expect(staleGet("clear-stale")).toBeUndefined();
+  });
+
+  it("does not cache a loader that started before a cache clear", async () => {
+    let resolveLoader!: (value: number) => void;
+    const pending = cached("in-flight", 60_000, () => new Promise<number>((resolve) => {
+      resolveLoader = resolve;
+    }));
+
+    cacheClear();
+    resolveLoader(42);
+
+    await expect(pending).resolves.toBe(42);
+    expect(cacheGet("in-flight")).toBeUndefined();
+  });
+
+  it("rejects manual cache writes from an old generation", () => {
+    const oldGeneration = cacheGeneration();
+    cacheClear();
+    cacheStore("old-manual-write", { source: "schwab" }, 60_000, oldGeneration);
+    expect(cacheGet("old-manual-write")).toBeUndefined();
   });
 });
