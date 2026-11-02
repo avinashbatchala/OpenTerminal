@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { cached, cacheGet, cacheStore, staleGet } from "../cache.js";
+import { cached, cacheGeneration, cacheGet, cacheStore, staleGet } from "../cache.js";
 import { tracked, withFallback } from "../providers/registry.js";
 import * as schwab from "../providers/schwab.js";
 import { getSettings } from "../settings.js";
@@ -142,6 +142,7 @@ async function requireChain<T extends { expirationDates: string[] }>(
 }
 
 async function getQuotes(symbols: string[]): Promise<yahoo.Quote[]> {
+  const generation = cacheGeneration();
   const fresh = new Map<string, yahoo.Quote>();
   const missing: string[] = [];
   for (const sym of symbols) {
@@ -244,7 +245,7 @@ async function getQuotes(symbols: string[]): Promise<yahoo.Quote[]> {
     }
   }
 
-  for (const [sym, q] of fetched) cacheStore(`quote:${sym}`, q, QUOTE_TTL);
+  for (const [sym, q] of fetched) cacheStore(`quote:${sym}`, q, QUOTE_TTL, generation);
 
   const out: yahoo.Quote[] = [];
   for (const sym of symbols) {

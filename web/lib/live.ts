@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+const STALE_STREAM_MS = 90_000;
 
 export type LiveCandle = {
   symbol: string;
@@ -42,8 +44,11 @@ export function useLiveQuotes(symbols: string[]): {
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
   const [connected, setConnected] = useState(false);
   const [receiving, setReceiving] = useState(false);
+  const [freshnessTick, setFreshnessTick] = useState(0);
+  const lastSeenRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
+    lastSeenRef.current.clear();
     setQuotes({});
     setConnected(false);
     setReceiving(false);
@@ -51,9 +56,9 @@ export function useLiveQuotes(symbols: string[]): {
 
     let source: EventSource | null = null;
     let active = true;
-    let lastEventAt = 0;
 
     const clearStream = () => {
+      lastSeenRef.current.clear();
       setConnected(false);
       setReceiving(false);
       setQuotes({});
@@ -63,7 +68,7 @@ export function useLiveQuotes(symbols: string[]): {
       try {
         const quote = JSON.parse(event.data) as LiveQuote;
         if (!active || !quote.symbol) return;
-        lastEventAt = Date.now();
+        lastSeenRef.current.set(quote.symbol, Date.now());
         setReceiving(true);
         setQuotes((previous) => ({ ...previous, [quote.symbol]: quote }));
       } catch {
@@ -77,6 +82,7 @@ export function useLiveQuotes(symbols: string[]): {
         if (!active) return;
         setConnected(Boolean(status.connected));
         if (!status.connected) {
+          lastSeenRef.current.clear();
           setReceiving(false);
           setQuotes({});
         }
@@ -92,12 +98,25 @@ export function useLiveQuotes(symbols: string[]): {
       if (active) clearStream();
     };
 
-    // A half-open stream must not keep overlaying old prices on REST data.
+    // Expire each symbol independently: an active MSFT stream must not keep a
+    // stale AAPL quote alive in the same watchlist subscription.
     const freshness = setInterval(() => {
-      if (active && lastEventAt > 0 && Date.now() - lastEventAt > 90_000) {
-        setReceiving(false);
-        setQuotes({});
+      if (!active) return;
+      const cutoff = Date.now() - STALE_STREAM_MS;
+      let hasFresh = false;
+      for (const [symbol, seenAt] of lastSeenRef.current) {
+        if (seenAt > cutoff) hasFresh = true;
+        else lastSeenRef.current.delete(symbol);
       }
+      setQuotes((previous) => {
+        const next: Record<string, LiveQuote> = {};
+        for (const symbol of Object.keys(previous)) {
+          if (lastSeenRef.current.has(symbol)) next[symbol] = previous[symbol];
+        }
+        return next;
+      });
+      if (!hasFresh) setReceiving(false);
+      setFreshnessTick((tick) => tick + 1);
     }, 15_000);
 
     return () => {
@@ -107,7 +126,17 @@ export function useLiveQuotes(symbols: string[]): {
     };
   }, [key]);
 
-  return { quotes: receiving ? quotes : {}, connected: connected && receiving };
+  const freshQuotes = useMemo(() => {
+    const cutoff = Date.now() - STALE_STREAM_MS;
+    const next: Record<string, LiveQuote> = {};
+    for (const [symbol, quote] of Object.entries(quotes)) {
+      if ((lastSeenRef.current.get(symbol) ?? 0) > cutoff) next[symbol] = quote;
+    }
+    return next;
+    // freshnessTick forces re-evaluation even when no new quote arrives.
+  }, [quotes, freshnessTick]);
+
+  return { quotes: receiving ? freshQuotes : {}, connected: connected && receiving };
 }
 
 /**
@@ -174,7 +203,7 @@ export function useLiveCandle(symbol: string, enabled = true): {
     // closed, entitlement issue), fall back to REST polling instead of
     // freezing the chart.
     const freshness = setInterval(() => {
-      if (active && lastEventAt > 0 && Date.now() - lastEventAt > 90_000) {
+      if (active && lastEventAt > 0 && Date.now() - lastEventAt > STALE_STREAM_MS) {
         setReceiving(false);
         setCandle(null);
       }

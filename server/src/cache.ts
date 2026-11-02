@@ -18,6 +18,14 @@ function evictLru<V>(map: Map<string, V>, max: number): void {
 
 const store = new Map<string, Entry>();
 
+// Cache epoch. Long-running provider calls capture this before they start and
+// skip writes if the cache was cleared while they were in flight.
+let generation = 0;
+
+export function cacheGeneration(): number {
+  return generation;
+}
+
 export function cacheGet<T>(key: string): T | undefined {
   const e = store.get(key);
   if (!e) return undefined;
@@ -58,10 +66,13 @@ export function staleGet<T>(key: string): T | undefined {
 export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = cacheGet<T>(key);
   if (hit !== undefined) return hit;
+  const generationAtStart = generation;
   try {
     const value = await fn();
-    cacheSet(key, value, ttlMs);
-    staleSet(key, value);
+    if (generation === generationAtStart) {
+      cacheSet(key, value, ttlMs);
+      staleSet(key, value);
+    }
     return value;
   } catch (err) {
     const stale = staleGet<T>(key);
@@ -70,13 +81,20 @@ export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>
   }
 }
 
-export function cacheStore(key: string, value: unknown, ttlMs: number): void {
+export function cacheStore(
+  key: string,
+  value: unknown,
+  ttlMs: number,
+  generationAtFetch?: number
+): void {
+  if (generationAtFetch !== undefined && generationAtFetch !== generation) return;
   cacheSet(key, value, ttlMs);
   staleSet(key, value);
 }
 
 /** Drop all cached data, e.g. after the data-source mode changes. */
 export function cacheClear(): void {
+  generation += 1;
   store.clear();
   staleStore.clear();
 }
