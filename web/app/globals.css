@@ -2,15 +2,15 @@
 
 :root {
   --bg: #000000;
-  --panel: #0a0a0a;
-  --panel-2: #111111;
-  --border: #262626;
-  --amber: #ff9900;
-  --amber-dim: #b36b00;
-  --up: #00c853;
-  --down: #ff3d3d;
-  --text: #d9d9d9;
-  --text-dim: #808080;
+  --panel: #1c1c1e;
+  --panel-2: #2c2c2e;
+  --border: #3a3a3c;
+  --amber: #ff9f0a;
+  --amber-dim: #c77700;
+  --up: #30d158;
+  --down: #ff453a;
+  --text: #ffffff;
+  --text-dim: #8e8e93;
 }
 
 html,
@@ -30,7 +30,7 @@ body {
   background: var(--panel);
 }
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #48484a;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--amber-dim);
@@ -98,11 +98,11 @@ table.data-table td:first-child {
 table.data-table td {
   text-align: right;
   padding: 2px 6px;
-  border-bottom: 1px solid #161616;
+  border-bottom: 1px solid #2c2c2e;
   white-space: nowrap;
 }
 table.data-table tbody tr:hover {
-  background: #1a1a1a;
+  background: #2c2c2e;
   cursor: pointer;
 }
 
@@ -111,7 +111,7 @@ table.data-table tbody tr:hover {
   animation: flash-white-anim 450ms ease-out;
 }
 @keyframes flash-white-anim {
-  0% { background-color: rgba(255, 255, 255, 0.85); }
+  0% { background-color: rgba(255, 255, 255, 0.32); }
   100% { background-color: transparent; }
 }
 
@@ -150,4 +150,108 @@ button.term-btn.active {
 }
 .react-grid-item > .react-resizable-handle::after {
   border-color: var(--amber-dim) !important;
+}
+
+/* Markdown rendered inside the AI chat widget. */
+.ai-markdown {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.ai-markdown > :first-child {
+  margin-top: 0;
+}
+.ai-markdown > :last-child {
+  margin-bottom: 0;
+}
+.ai-markdown p {
+  margin: 0.35em 0;
+}
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  color: var(--amber);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin: 0.7em 0 0.3em;
+  line-height: 1.3;
+}
+.ai-markdown h1 { font-size: 14px; }
+.ai-markdown h2 { font-size: 13px; }
+.ai-markdown h3 { font-size: 12px; }
+.ai-markdown h4 { font-size: 11px; }
+.ai-markdown ul,
+.ai-markdown ol {
+  margin: 0.35em 0;
+  padding-left: 1.35em;
+}
+.ai-markdown ul { list-style: disc; }
+.ai-markdown ol { list-style: decimal; }
+.ai-markdown li {
+  margin: 0.15em 0;
+}
+.ai-markdown li > p {
+  margin: 0;
+}
+.ai-markdown strong {
+  color: var(--text);
+  font-weight: 700;
+}
+.ai-markdown em {
+  font-style: italic;
+}
+.ai-markdown code {
+  background: #2c2c2e;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-size: 10.5px;
+}
+.ai-markdown pre {
+  background: #1c1c1e;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 0.5em 0;
+  overflow-x: auto;
+  padding: 8px;
+}
+.ai-markdown pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.ai-markdown a {
+  color: var(--amber);
+  text-decoration: underline;
+}
+.ai-markdown blockquote {
+  border-left: 2px solid var(--amber-dim);
+  color: var(--text-dim);
+  margin: 0.5em 0;
+  padding-left: 8px;
+}
+.ai-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.6em 0;
+}
+.ai-markdown table {
+  border-collapse: collapse;
+  font-size: 10.5px;
+  margin: 0.5em 0;
+  width: 100%;
+}
+.ai-markdown th,
+.ai-markdown td {
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.ai-markdown th {
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-weight: 400;
+  text-transform: uppercase;
+  font-size: 9.5px;
 }

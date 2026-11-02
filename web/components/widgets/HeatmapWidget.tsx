@@ -46,8 +46,8 @@ export default function HeatmapWidget() {
       const color = (chg: number) => {
         const clamped = Math.max(-3, Math.min(3, chg));
         return clamped >= 0
-          ? d3.interpolateRgb("#1a1a1a", "#00c853")(clamped / 3)
-          : d3.interpolateRgb("#1a1a1a", "#ff3d3d")(-clamped / 3);
+          ? d3.interpolateRgb("#1c1c1e", "#30d158")(clamped / 3)
+          : d3.interpolateRgb("#1c1c1e", "#ff453a")(-clamped / 3);
       };
 
       const svg = d3.select(el).append("svg").attr("width", width).attr("height", height);
@@ -76,7 +76,7 @@ export default function HeatmapWidget() {
         .attr("x", (d: any) => d.x0 + 3)
         .attr("y", (d: any) => d.y0 + 9)
         .attr("clip-path", (d: any) => `url(#${sectorClipId(d.data.name)})`)
-        .attr("fill", "#808080")
+        .attr("fill", "#8e8e93")
         .attr("font-size", 8)
         .text((d: any) => d.data.name.toUpperCase());
 
@@ -112,7 +112,7 @@ export default function HeatmapWidget() {
         .append("text")
         .attr("x", 3)
         .attr("y", 22)
-        .attr("fill", "#ddd")
+        .attr("fill", "#d1d1d6")
         .attr("font-size", 8)
         .text((d: any) => `${d.data.data.changePercent >= 0 ? "+" : ""}${d.data.data.changePercent.toFixed(2)}%`);
     };

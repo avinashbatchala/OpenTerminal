@@ -28,9 +28,13 @@ const ts = (t: number) => t as UTCTimestamp;
 const toMap = (pts: Point[]) => new Map(pts.map((p) => [p.time, p.value]));
 
 const INDICATOR_COLOR: Record<string, string> = {
-  SMA20: "#ffd966", SMA50: "#4fc3f7", SMA200: "#ba68c8", EMA20: "#ff8a65",
-  VWAP: "#80cbc4", RSI: "#ff9900", BOLL: "#ff9900", MACD: "#4fc3f7",
+  SMA20: "#ffd60a", SMA50: "#64d2ff", SMA200: "#bf5af2", EMA20: "#ff9f0a",
+  VWAP: "#66d9d0", RSI: "#ff9f0a", BOLL: "#ff9f0a", MACD: "#64d2ff",
 };
+
+const UP_COLOR = "#30d158";
+const DOWN_COLOR = "#ff453a";
+const ACCENT_COLOR = "#ff9f0a";
 
 export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
   const symbol = useWidgetSymbol(widget);
@@ -131,11 +135,11 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     if (!el || !candles || candles.length === 0) return;
 
     const chart = createChart(el, {
-      layout: { background: { color: "#0a0a0a" }, textColor: "#808080", fontSize: 10, attributionLogo: false },
-      grid: { vertLines: { color: "#1a1a1a" }, horzLines: { color: "#1a1a1a" } },
+      layout: { background: { color: "#000000" }, textColor: "#8e8e93", fontSize: 10, attributionLogo: false },
+      grid: { vertLines: { color: "#1c1c1e" }, horzLines: { color: "#1c1c1e" } },
       crosshair: { mode: 0 },
-      timeScale: { borderColor: "#262626", timeVisible: range === "1D" || range === "5D" },
-      rightPriceScale: { borderColor: "#262626" },
+      timeScale: { borderColor: "#3a3a3c", timeVisible: range === "1D" || range === "5D" },
+      rightPriceScale: { borderColor: "#3a3a3c" },
       autoSize: true,
       // Mouse-wheel is left free for page scrolling — zoom via drag, pinch, or the range buttons instead.
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
@@ -143,8 +147,8 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     });
     chartRef.current = chart;
 
-    const upColor = "#00c853";
-    const downColor = "#ff3d3d";
+    const upColor = UP_COLOR;
+    const downColor = DOWN_COLOR;
 
     if (chartType === "candles") {
       chart
@@ -159,11 +163,11 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
         .setData(candles.map((c) => ({ time: ts(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
     } else if (chartType === "line") {
       chart
-        .addSeries(LineSeries, { color: "#ff9900", lineWidth: 1 })
+        .addSeries(LineSeries, { color: ACCENT_COLOR, lineWidth: 1 })
         .setData(candles.map((c) => ({ time: ts(c.time), value: c.close })));
     } else {
       chart
-        .addSeries(AreaSeries, { lineColor: "#ff9900", topColor: "rgba(255,153,0,0.25)", bottomColor: "rgba(255,153,0,0)" })
+        .addSeries(AreaSeries, { lineColor: ACCENT_COLOR, topColor: "rgba(255,159,10,0.18)", bottomColor: "rgba(255,159,10,0)" })
         .setData(candles.map((c) => ({ time: ts(c.time), value: c.close })));
     }
 
@@ -171,7 +175,7 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     const vol = chart.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" } });
     vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     vol.setData(
-      candles.map((c) => ({ time: ts(c.time), value: c.volume, color: c.close >= c.open ? "rgba(0,200,83,0.4)" : "rgba(255,61,61,0.4)" }))
+      candles.map((c) => ({ time: ts(c.time), value: c.volume, color: c.close >= c.open ? "rgba(48,209,88,0.32)" : "rgba(255,69,58,0.32)" }))
     );
 
     const overlay = (points: Point[], color: string) =>
@@ -184,9 +188,9 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     if (indicatorData?.EMA20) overlay(indicatorData.EMA20, INDICATOR_COLOR.EMA20);
     if (indicatorData?.VWAP) overlay(indicatorData.VWAP, INDICATOR_COLOR.VWAP);
     if (indicatorData?.BOLL) {
-      overlay(indicatorData.BOLL.upper, "rgba(255,153,0,0.5)");
-      overlay(indicatorData.BOLL.middle, "rgba(255,153,0,0.8)");
-      overlay(indicatorData.BOLL.lower, "rgba(255,153,0,0.5)");
+      overlay(indicatorData.BOLL.upper, "rgba(255,159,10,0.45)");
+      overlay(indicatorData.BOLL.middle, "rgba(255,159,10,0.75)");
+      overlay(indicatorData.BOLL.lower, "rgba(255,159,10,0.45)");
     }
 
     let paneIdx = 1;
@@ -197,13 +201,13 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
     if (indicatorData?.MACD) {
       const m = indicatorData.MACD;
       const pane = paneIdx++;
-      chart.addSeries(HistogramSeries, { color: "#4fc3f7" }, pane).setData(
-        m.histogram.map((p) => ({ time: ts(p.time), value: p.value, color: p.value >= 0 ? "rgba(0,200,83,0.6)" : "rgba(255,61,61,0.6)" }))
+      chart.addSeries(HistogramSeries, { color: "#64d2ff" }, pane).setData(
+        m.histogram.map((p) => ({ time: ts(p.time), value: p.value, color: p.value >= 0 ? "rgba(48,209,88,0.5)" : "rgba(255,69,58,0.5)" }))
       );
-      chart.addSeries(LineSeries, { color: "#ff9900", lineWidth: 1 }, pane).setData(
+      chart.addSeries(LineSeries, { color: ACCENT_COLOR, lineWidth: 1 }, pane).setData(
         m.macd.map((p) => ({ time: ts(p.time), value: p.value }))
       );
-      chart.addSeries(LineSeries, { color: "#ffffff", lineWidth: 1 }, pane).setData(
+      chart.addSeries(LineSeries, { color: "#d1d1d6", lineWidth: 1 }, pane).setData(
         m.signal.map((p) => ({ time: ts(p.time), value: p.value }))
       );
     }

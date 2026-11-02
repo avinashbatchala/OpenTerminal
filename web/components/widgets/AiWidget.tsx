@@ -2,6 +2,8 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { apiGet, apiPost, type Quote } from "../../lib/api";
 import { useTerminal } from "../../store/terminal";
 
@@ -55,8 +57,33 @@ export default function AiWidget() {
         )}
         {messages.map((m, i) => (
           <div key={i}>
-            <span className={m.role === "user" ? "amber" : "up"}>{m.role === "user" ? "YOU" : "AI"} ›</span>{" "}
-            <span className="whitespace-pre-wrap">{m.content}</span>
+            {m.role === "user" ? (
+              <>
+                <span className="amber">YOU ›</span>{" "}
+                <span className="whitespace-pre-wrap">{m.content}</span>
+              </>
+            ) : (
+              <>
+                <span className="up">AI ›</span>
+                <div className="ai-markdown mt-0.5">
+                  <Markdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ node: _node, ...props }) => (
+                        <a {...props} target="_blank" rel="noreferrer" />
+                      ),
+                      table: ({ node: _node, ...props }) => (
+                        <div className="overflow-x-auto">
+                          <table {...props} />
+                        </div>
+                      ),
+                    }}
+                  >
+                    {m.content}
+                  </Markdown>
+                </div>
+              </>
+            )}
             {m.tools && m.tools.length > 0 && (
               <div className="dim text-[10px] mt-1">
                 used:{" "}
