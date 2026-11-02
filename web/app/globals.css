@@ -116,7 +116,8 @@ table.data-table tbody tr:hover {
 }
 
 input,
-select {
+select,
+textarea {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
@@ -126,7 +127,8 @@ select {
   outline: none;
 }
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--amber);
 }
 button.term-btn {
@@ -239,7 +241,8 @@ button.term-btn.active {
   border-collapse: collapse;
   font-size: 10.5px;
   margin: 0.5em 0;
-  width: 100%;
+  min-width: 100%;
+  width: max-content;
 }
 .ai-markdown th,
 .ai-markdown td {
@@ -254,4 +257,313 @@ button.term-btn.active {
   font-weight: 400;
   text-transform: uppercase;
   font-size: 9.5px;
+}
+
+/* Floating AI chat. Command palette stays above at z-50; chat/backdrop sit below. */
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.chat-launcher {
+  position: fixed;
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 40;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--amber-dim);
+  border-radius: 14px;
+  background: var(--panel-2);
+  color: var(--amber);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.chat-launcher:hover {
+  border-color: var(--amber);
+  background: #333336;
+}
+
+.chat-launcher:active {
+  transform: translateY(1px);
+}
+
+.chat-launcher--hidden {
+  display: none;
+}
+
+.chat-launcher-text {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.chat-launcher[data-pending="true"]::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--amber);
+  animation: chat-pulse 1.4s ease-in-out infinite;
+}
+
+.chat-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.chat-panel {
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  animation: chat-in 160ms ease-out;
+}
+
+.chat-panel--desktop {
+  position: fixed;
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: calc(5rem + env(safe-area-inset-bottom));
+  width: min(24rem, calc(100vw - 2rem));
+  height: min(34rem, calc(100dvh - 7rem));
+  max-width: calc(100vw - 2rem - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-height: calc(100dvh - 7rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  border-radius: 10px;
+}
+
+.chat-panel--desktop .panel-title {
+  padding-left: 30px;
+}
+
+.chat-panel--resizing,
+body.chat-resizing {
+  user-select: none;
+}
+
+body.chat-resizing {
+  cursor: nwse-resize;
+}
+
+.chat-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px 0 4px 0;
+  background: transparent;
+  color: var(--amber-dim);
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.chat-resize-handle:hover,
+.chat-resize-handle[data-dragging="true"],
+.chat-resize-handle:focus-visible {
+  background: rgba(255, 159, 10, 0.08);
+  color: var(--amber);
+}
+
+.chat-resize-handle:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -3px;
+}
+
+.chat-resize-handle::before,
+.chat-resize-handle::after {
+  content: "";
+  position: absolute;
+  border-top: 1px solid currentColor;
+  border-left: 1px solid currentColor;
+}
+
+.chat-resize-handle::before {
+  top: 6px;
+  left: 6px;
+  width: 11px;
+  height: 11px;
+}
+
+.chat-resize-handle::after {
+  top: 10px;
+  left: 10px;
+  width: 6px;
+  height: 6px;
+}
+
+.chat-panel--mobile {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: min(80dvh, 44rem);
+  border-radius: 14px 14px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.chat-symbol-pill {
+  border: 1px solid var(--amber-dim);
+  border-radius: 4px;
+  color: var(--amber);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  padding: 1px 5px;
+}
+
+.chat-symbol-pill--muted {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.chat-close {
+  min-width: 32px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-dim);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-close:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.chat-message {
+  overflow-wrap: anywhere;
+}
+
+.chat-composer {
+  background: var(--panel);
+}
+
+.chat-composer input {
+  min-height: 32px;
+}
+
+.chat-latest {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.chat-latest:hover {
+  border-color: var(--amber-dim);
+  color: var(--amber);
+}
+
+.chat-pending-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--amber);
+  animation: chat-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes chat-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chat-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel {
+    animation: none;
+  }
+  .chat-launcher,
+  .chat-launcher[data-pending="true"]::after,
+  .chat-pending-dot {
+    animation: none;
+    transition: none;
+  }
+}
+
+
+.chat-composer textarea {
+  min-height: 44px;
+  max-height: 120px;
+  padding: 7px 8px;
+  resize: none;
+  line-height: 1.45;
+  overflow-y: auto;
+}
+
+.chat-send {
+  min-height: 36px;
+  min-width: 58px;
+}
+
+.chat-retry {
+  min-height: 36px;
+  min-width: 60px;
+}
+
+.chat-launcher[data-unread="success"]::before,
+.chat-launcher[data-unread="error"]::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--up);
+}
+
+.chat-launcher[data-unread="error"]::before {
+  background: var(--down);
+}
+
+@media (max-width: 640px) {
+  .chat-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .chat-send {
+    min-height: 44px;
+    min-width: 64px;
+  }
+  .chat-retry {
+    min-height: 44px;
+    min-width: 68px;
+  }
+  .chat-latest {
+    min-height: 40px;
+  }
 }

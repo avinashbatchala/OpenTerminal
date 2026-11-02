@@ -1,6 +1,7 @@
 import { Router } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { runAgent } from "../ai/agent.js";
+import { AI_SYSTEM_PROMPT } from "../ai/prompt.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import { getAiConfig } from "../settings.js";
 
@@ -24,15 +25,6 @@ function getClient(): Anthropic {
   return client;
 }
 
-const SYSTEM = `You are the AI assistant inside OpenTerminal, a Bloomberg-style financial terminal.
-You help the user interpret market data, charts, news, options chains and macro indicators.
-Answer concisely and professionally, in the language the user writes in.
-
-You have tools that read the terminal's live data: quotes, price history, option chains, news, insider transactions, and macro snapshots. Use them whenever the answer depends on current or historical market data; never invent prices, option values, headlines, or insider activity. Prefer get_quote before fetching more data for the same symbol. If a tool fails, say what failed rather than guessing.
-When market data is provided in the conversation as JSON context, ground your answer in it too.
-Cite the symbol, range/expiry, and timestamp when relevant.
-You are not a licensed financial advisor: never give personalized investment advice or tell the user what to buy or sell.`;
-
 aiRouter.post("/chat", async (req, res) => {
   const { messages, context } = req.body ?? {};
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -42,7 +34,7 @@ aiRouter.post("/chat", async (req, res) => {
     const result = await runAgent({
       client: getClient(),
       model: getAiConfig().model,
-      system: SYSTEM,
+      system: AI_SYSTEM_PROMPT,
       messages: messages.map((message: MessageParam) => ({
         role: message.role,
         content: message.content,

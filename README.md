@@ -48,9 +48,9 @@ No signup. No credit card. No rate‑limited demo tier. Clone it, `npm install`,
 - 🏦 **Macro dashboard** — live US Treasury yield curve, VIX, and major index/commodity proxies
 - 💼 **Portfolio tracker** — log buy/sell transactions, track average cost, realized & unrealized P&L (persisted in SQLite)
 - 📅 **Calendar** — economic events (Fed, ECB, CPI, NFP and more) with consensus forecast, previous reading and, for the major US/EU releases, the actual outcome; plus a per‑watchlist earnings calendar with click‑through history showing forecast vs. actual EPS for the last several quarters and the stock's next‑day price move
-- 🤖 **AI assistant** (optional) — ask questions about the symbol you're looking at, powered by Claude, fully context‑aware of the terminal's current data
+- 🤖 **Floating AI assistant** (optional) — open a chat panel from the bottom‑right without leaving the workspace; it keeps the conversation while closed, captures the active ticker at send time, and can pull quotes, history, options, news, insider filings, and macro data through Claude tools
 - ⚡ **Near real‑time updates** — quotes and indexes refresh every second with a subtle flash on change, so you always know what just moved
-- ⌨️ **Keyboard shortcuts** everywhere — `⌘K` to search, `⌥1`–`⌥9` to add any widget
+- ⌨️ **Keyboard shortcuts** everywhere — `⌘K` to search, `⌥1`–`⌥8` to add any widget
 
 <br/>
 
@@ -190,9 +190,13 @@ export ANTHROPIC_API_KEY=sk-ant-...
 npm run dev
 ```
 
-You can also paste the key, base URL, and model into **Settings**. Without a key, everything else still works — the AI widget just shows a friendly "unavailable" message instead of failing.
+You can also paste the key, base URL, and model into **Settings**. Without a key, everything else still works — the floating chat just shows a friendly "unavailable" message instead of failing.
 
-The assistant uses read-only tools to pull live terminal data on demand: quotes, price history, option-chain summaries, news, SEC insider transactions, and macro snapshots. It can call these tools multiple times per question, but not arbitrary URLs, portfolio data, settings, or trading endpoints. Tool results are summarized and size-limited; the AI widget shows which tools were used under each reply.
+Open the assistant from the **AI** launcher at the bottom-right. On desktop it opens as a nonmodal, resizable panel (drag the top-left grip, or focus it and use the arrow keys with Shift for larger steps) so the terminal stays usable; on narrow screens it becomes a modal sheet. Closing the panel keeps the conversation, draft, in-flight response, and your desktop size in memory for the terminal session.
+
+Each message records the ticker that was active when it was sent, so changing the terminal ticker during a request does not change that request's meaning. Failed messages stay visible with a retry action.
+
+The assistant uses read-only tools to pull live terminal data on demand: quotes, price history, option-chain summaries, news, SEC insider transactions, and macro snapshots. It can call these tools multiple times per question, but not arbitrary URLs, portfolio data, settings, or trading endpoints. Tool results are summarized and size-limited; the chat shows which tools were used under each reply.
 
 If your API is not reachable at `127.0.0.1:<API_PORT>` from the API process itself (for example, a non-loopback `API_HOST`), set `AI_INTERNAL_API_URL` to the loopback base URL used for tool calls.
 
@@ -246,8 +250,9 @@ Portfolio data, Schwab tokens, and runtime settings persist in the `terminal-dat
 │       └── db.ts            # SQLite (better-sqlite3, WAL)
 └── web/                      # Next.js 15 + React 19 + Tailwind 4
     ├── components/           # TopBar, Sidebar, Workspace, CommandPalette
-    ├── components/widgets/   # Chart, Quote, Watchlist, News, Screener, Heatmap, Crypto, Options, Macro, Portfolio, Calendar, AI
-    ├── lib/                  # API client, technical indicators
+    ├── components/chat/      # floating AI launcher, panel, provider
+    ├── components/widgets/   # Chart, Quote, Watchlist, News, Screener, Heatmap, Crypto, Options, Macro, Portfolio, Calendar
+    ├── lib/                  # API client, chat state, technical indicators
     └── store/                # Zustand store (workspace layout, persisted)
 ```
 

@@ -15,6 +15,8 @@ export default function CommandPalette() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const wasOpen = useRef(false);
 
   const { data: results = [] } = useQuery({
     queryKey: ["search", query],
@@ -25,10 +27,21 @@ export default function CommandPalette() {
 
   useEffect(() => {
     if (open) {
+      if (!wasOpen.current) restoreFocusRef.current = document.activeElement as HTMLElement | null;
+      wasOpen.current = true;
       setQuery("");
       setSelected(0);
-      setTimeout(() => inputRef.current?.focus(), 30);
+      const timer = setTimeout(() => inputRef.current?.focus(), 30);
+      return () => clearTimeout(timer);
     }
+
+    if (wasOpen.current) {
+      const target = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      if (target?.isConnected) requestAnimationFrame(() => target.focus());
+    }
+    wasOpen.current = false;
+    return undefined;
   }, [open]);
 
   useEffect(() => setSelected(0), [results.length]);

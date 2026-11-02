@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { normalizeSymbol } from "../lib/symbol";
+import { sanitizeWorkspace } from "../lib/workspace";
 
 export type WidgetType =
   | "quote"
@@ -15,7 +16,6 @@ export type WidgetType =
   | "macro"
   | "options"
   | "portfolio"
-  | "ai"
   | "calendar"
   | "insider"
   | "tv"
@@ -75,7 +75,6 @@ const SIZE_BY_TYPE: Record<WidgetType, { w: number; h: number }> = {
   macro: { w: 5, h: 7 },
   options: { w: 12, h: 9 },
   portfolio: { w: 7, h: 8 },
-  ai: { w: 5, h: 10 },
   calendar: { w: 12, h: 11 },
   insider: { w: 7, h: 9 },
   tv: { w: 6, h: 11 },
@@ -132,7 +131,18 @@ export const useTerminal = create<TerminalState>()(
       removeFromWatchlist: (s) => set((st) => ({ watchlist: st.watchlist.filter((x) => x !== s) })),
       resetWorkspace: () => set({ widgets: DEFAULT_WIDGETS, layout: DEFAULT_LAYOUT }),
     }),
-    { name: "openterminal-workspace" }
+    {
+      name: "openterminal-workspace",
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<TerminalState> | undefined;
+        if (!saved) return current;
+        const { widgets, layout } = sanitizeWorkspace(
+          saved.widgets ?? current.widgets,
+          saved.layout ?? current.layout
+        );
+        return { ...current, ...saved, widgets, layout };
+      },
+    }
   )
 );
 
