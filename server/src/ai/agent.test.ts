@@ -46,6 +46,7 @@ describe("AI agent tool loop", () => {
     expect(result.text).toBe("AAPL is trading at 230.50.");
     expect(result.toolCalls).toEqual([toolExecution]);
     expect(execute).toHaveBeenCalledWith("get_quote", { symbol: "AAPL" });
+    expect(create.mock.calls[0][0].system).toBe("system");
 
     const secondMessages = create.mock.calls[1][0].messages;
     expect(secondMessages[0]).toEqual({ role: "user", content: "How is AAPL?" });

@@ -5,9 +5,20 @@ import TopBar from "./TopBar";
 import Sidebar from "./Sidebar";
 import Workspace from "./Workspace";
 import CommandPalette from "./CommandPalette";
+import { ChatProvider } from "./chat/ChatProvider";
+import ChatLauncher from "./chat/ChatLauncher";
+import WidgetErrorBoundary from "./WidgetErrorBoundary";
 import { useTerminal } from "../store/terminal";
 
 export default function Terminal() {
+  return (
+    <ChatProvider>
+      <TerminalContent />
+    </ChatProvider>
+  );
+}
+
+function TerminalContent() {
   const setCommandOpen = useTerminal((s) => s.setCommandOpen);
   const addWidget = useTerminal((s) => s.addWidget);
 
@@ -28,7 +39,6 @@ export default function Terminal() {
           "6": () => addWidget("crypto"),
           "7": () => addWidget("options"),
           "8": () => addWidget("portfolio"),
-          "9": () => addWidget("ai"),
         };
         const fn = map[e.key];
         if (fn) {
@@ -51,6 +61,9 @@ export default function Terminal() {
         </main>
       </div>
       <CommandPalette />
+      <WidgetErrorBoundary name="AI Chat">
+        <ChatLauncher />
+      </WidgetErrorBoundary>
     </div>
   );
 }
