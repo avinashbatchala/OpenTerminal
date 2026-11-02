@@ -197,6 +197,52 @@ describe("desktop chat resizing", () => {
     expect(panelSize()).toEqual({ width: 288, height: 408 });
   });
 
+  it("cancels an active drag when switching to mobile", () => {
+    const onClose = vi.fn();
+    const view = render(
+      <ChatProvider>
+        <ChatPanel isMobile={false} onClose={onClose} />
+      </ChatProvider>
+    );
+
+    const handle = resizeHandle();
+    installPointerCapture(handle);
+    fireEvent.pointerDown(handle, { pointerId: 9, button: 0, clientX: 500, clientY: 500 });
+    fireEvent.pointerMove(handle, { pointerId: 9, clientX: 450, clientY: 450 });
+    expect(document.body).toHaveClass("chat-resizing");
+    const draggedWidth = panelSize().width;
+
+    act(() => {
+      view.rerender(
+        <ChatProvider>
+          <ChatPanel isMobile onClose={onClose} />
+        </ChatProvider>
+      );
+    });
+    expect(screen.queryByRole("button", { name: CHAT_RESIZE_LABEL })).toBeNull();
+    expect(document.body).not.toHaveClass("chat-resizing");
+    expect(panelElement().style.width).toBe("");
+
+    act(() => {
+      view.rerender(
+        <ChatProvider>
+          <ChatPanel isMobile={false} onClose={onClose} />
+        </ChatProvider>
+      );
+    });
+    const nextHandle = resizeHandle();
+    installPointerCapture(nextHandle);
+    expect(panelSize().width).toBe(draggedWidth);
+
+    const before = panelSize();
+    fireEvent.pointerDown(nextHandle, { pointerId: 10, button: 0, clientX: 500, clientY: 500 });
+    expect(document.body).toHaveClass("chat-resizing");
+    fireEvent.pointerMove(nextHandle, { pointerId: 10, clientX: 470, clientY: 470 });
+    expect(panelSize().width).toBeGreaterThan(before.width);
+    fireEvent.pointerUp(nextHandle, { pointerId: 10 });
+    expect(document.body).not.toHaveClass("chat-resizing");
+  });
+
   it("disables resizing on mobile and restores the desktop size after switching back", () => {
     const onClose = vi.fn();
     const view = render(

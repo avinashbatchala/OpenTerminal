@@ -66,6 +66,15 @@ export function useChatResize(isMobile: boolean) {
     };
   }, [isMobile]);
 
+  // The mobile sheet removes the handle but keeps this hook mounted. Cancel any
+  // active desktop drag so selection and the next desktop drag are not stuck.
+  useEffect(() => {
+    if (!isMobile) return;
+    dragRef.current = null;
+    setDragging(false);
+    document.body.classList.remove(RESIZING_CLASS);
+  }, [isMobile]);
+
   // Pointer capture keeps all drag events on the handle, but unmounting the
   // panel can leave the body in its no-select state.
   useEffect(
