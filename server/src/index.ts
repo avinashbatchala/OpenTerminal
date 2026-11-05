@@ -6,6 +6,7 @@ import { aiRouter } from "./routes/ai.js";
 import { schwabRouter } from "./routes/schwab.js";
 import { streamRouter } from "./routes/stream.js";
 import { settingsRouter } from "./routes/settings.js";
+import { scannerRouter, scannerScheduler } from "./routes/scanner.js";
 import { allStats } from "./providers/registry.js";
 import { schwabStreamer } from "./providers/schwabStreamer.js";
 import { isSchwabConfigured } from "./providers/schwabAuth.js";
@@ -46,6 +47,12 @@ app.use("/api", rateLimit({ windowMs: 60_000, max: 240 }), marketRouter);
 app.use("/api/schwab", requireApiKey, schwabRouter);
 app.use("/api/stream", requireApiKey, streamRouter);
 app.use("/api/settings", requireApiKey, settingsRouter);
+app.use(
+  "/api/scanner",
+  requireApiKey,
+  rateLimit({ windowMs: 60_000, max: 120 }),
+  scannerRouter
+);
 // Portfolio data and the paid AI endpoint require a shared secret; see auth.ts.
 app.use("/api/portfolios", requireApiKey, portfolioRouter);
 app.use(
@@ -76,4 +83,5 @@ const PORT = Number(process.env.API_PORT ?? 4000);
 const HOST = process.env.API_HOST ?? "127.0.0.1";
 app.listen(PORT, HOST, () => {
   console.log(`OpenTerminal API listening on http://${HOST}:${PORT}`);
+  scannerScheduler.start();
 });

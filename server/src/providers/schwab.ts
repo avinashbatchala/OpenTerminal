@@ -33,6 +33,7 @@ type SchwabInstrument = {
 };
 
 type SchwabOptionContract = {
+  symbol?: string;
   strikePrice?: number;
   last?: number;
   bid?: number;
@@ -41,6 +42,17 @@ type SchwabOptionContract = {
   openInterest?: number;
   volatility?: number;
   inTheMoney?: boolean;
+  multiplier?: number;
+  settlementType?: string;
+  expirationDate?: string;
+  quoteTimeInLong?: number;
+  deliverableNote?: string;
+  optionDeliverables?: Array<{
+    symbol?: string;
+    deliverableUnits?: number;
+    assetType?: string;
+    deliverableType?: string;
+  }>;
 };
 
 type SchwabOptionChain = {
@@ -60,6 +72,13 @@ export type SchwabOptionRow = {
   openInterest: number | null;
   impliedVolatility: number | null;
   inTheMoney: boolean;
+  contractSymbol?: string | null;
+  optionType?: "call" | "put";
+  expiry?: string | null;
+  multiplier?: number | null;
+  deliverable?: string | null;
+  quoteTime?: number | null;
+  source?: string;
 };
 
 export type SchwabChain = {
@@ -249,6 +268,22 @@ const RANGE_SPEC: Record<string, RangeSpec> = {
   MAX: { periodType: "year", period: 20, frequencyType: "monthly", frequency: 1, extended: false },
 };
 
+const SCHWAB_MINUTE_FREQUENCIES = new Set([1, 5, 10, 15, 30]);
+
+/**
+ * Resolve the Schwab `frequency` for a range. Daily/weekly/monthly ranges cannot
+ * be re-sampled, so an intraday interval request only applies to 1D/5D. Callers
+ * that need a specific bar size (the scanner needs five-minute bars) pass it
+ * explicitly instead of assuming the provider default.
+ */
+export function historyFrequency(rangeKey: string, intervalMinutes?: number): number {
+  const spec = RANGE_SPEC[rangeKey] ?? RANGE_SPEC["6M"];
+  if (spec.frequencyType !== "minute") return spec.frequency;
+  return intervalMinutes && SCHWAB_MINUTE_FREQUENCIES.has(intervalMinutes)
+    ? intervalMinutes
+    : spec.frequency;
+}
+
 export function mapSchwabCandles(candles: SchwabCandle[] | undefined): Candle[] {
   const out: Candle[] = [];
   for (const c of candles ?? []) {
@@ -307,12 +342,16 @@ function newYorkStartOfDay(now = new Date()): number {
   return midnightUTCGuess - offset * 60_000;
 }
 
-export async function history(symbol: string, rangeKey: string): Promise<Candle[]> {
+export async function history(
+  symbol: string,
+  rangeKey: string,
+  intervalMinutes?: number
+): Promise<Candle[]> {
   const spec = RANGE_SPEC[rangeKey] ?? RANGE_SPEC["6M"];
   const params = new URLSearchParams({
     symbol,
     frequencyType: spec.frequencyType,
-    frequency: String(spec.frequency),
+    frequency: String(historyFrequency(rangeKey, intervalMinutes)),
     needExtendedHoursData: String(spec.extended),
     needPreviousClose: "true",
   });
@@ -337,8 +376,17 @@ export async function history(symbol: string, rangeKey: string): Promise<Candle[
   return mapSchwabCandles(json.candles);
 }
 
-function mapOptionContract(raw: SchwabOptionContract): SchwabOptionRow {
+function mapOptionContract(
+  raw: SchwabOptionContract,
+  optionType: "call" | "put"
+): SchwabOptionRow {
   const volatility = num(raw.volatility);
+  const deliverables = (raw.optionDeliverables ?? [])
+    .map((entry) => {
+      const units = num(entry.deliverableUnits);
+      return entry.symbol && units !== null ? `${units} ${entry.symbol}` : null;
+    })
+    .filter((entry): entry is string => Boolean(entry));
   return {
     strike: num(raw.strikePrice),
     lastPrice: num(raw.last),
@@ -349,19 +397,30 @@ function mapOptionContract(raw: SchwabOptionContract): SchwabOptionRow {
     // Schwab reports volatility as a percentage; the UI expects a fraction.
     impliedVolatility: volatility === null ? null : volatility / 100,
     inTheMoney: Boolean(raw.inTheMoney),
+    contractSymbol: raw.symbol ?? null,
+    optionType,
+    expiry: raw.expirationDate?.slice(0, 10) ?? null,
+    multiplier: num(raw.multiplier),
+    deliverable: deliverables.length ? deliverables.join("; ") : raw.deliverableNote ?? null,
+    quoteTime: (() => {
+      const value = num(raw.quoteTimeInLong);
+      return value === null ? null : Math.floor(value / 1000);
+    })(),
+    source: "schwab",
   };
 }
 
 function contractsForDate(
   map: Record<string, Record<string, SchwabOptionContract[]>> | undefined,
-  date: string | null
+  date: string | null,
+  optionType: "call" | "put"
 ): SchwabOptionRow[] {
   if (!map || !date) return [];
   const entry = Object.entries(map).find(([key]) => key.split(":")[0] === date);
   if (!entry) return [];
   return Object.values(entry[1])
     .flat()
-    .map(mapOptionContract)
+    .map((row) => mapOptionContract(row, optionType))
     .filter((row) => row.strike !== null);
 }
 
@@ -389,8 +448,8 @@ export function mapSchwabOptionChain(
     underlyingPrice: num(raw.underlyingPrice) ?? num(raw.underlying?.last),
     expirationDates: dates,
     selectedDate,
-    calls: contractsForDate(raw.callExpDateMap, selectedDate),
-    puts: contractsForDate(raw.putExpDateMap, selectedDate),
+    calls: contractsForDate(raw.callExpDateMap, selectedDate, "call"),
+    puts: contractsForDate(raw.putExpDateMap, selectedDate, "put"),
   };
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
 import { useTerminal } from "../store/terminal";
+import OpportunitiesLink from "./OpportunitiesLink";
 
 type Status = {
   ok: boolean;
@@ -78,6 +79,7 @@ export default function TopBar() {
         </span>
       )}
       <span className={status?.ai ? "up" : "dim"}>AI {status?.ai ? "●" : "○"}</span>
+      <OpportunitiesLink />
       <Link href="/settings" className="dim hover:text-[var(--amber)]" title="Settings">
         ⚙ SETTINGS
       </Link>
