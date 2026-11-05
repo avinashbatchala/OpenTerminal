@@ -141,6 +141,23 @@ async function requireChain<T extends { expirationDates: string[] }>(
   return chain;
 }
 
+/** A provider with no exchange quote timestamps cannot support stale-quote
+ * gating, so the scanner asks the fallback chain for one that does. Retrieval
+ * time is never substituted for an exchange quote time. */
+function requireQuoteTimestamps<T extends { calls?: any[]; puts?: any[] }>(
+  label: string,
+  chain: T
+): T {
+  const rows = [...(chain.calls ?? []), ...(chain.puts ?? [])];
+  if (
+    rows.length > 0 &&
+    rows.every((row) => row?.quoteTime === null || row?.quoteTime === undefined)
+  ) {
+    throw new Error(`${label}: option quotes have no exchange timestamps`);
+  }
+  return chain;
+}
+
 async function getQuotes(symbols: string[]): Promise<yahoo.Quote[]> {
   const generation = cacheGeneration();
   const fresh = new Map<string, yahoo.Quote>();
@@ -384,35 +401,51 @@ marketRouter.get("/econ-calendar", async (req, res) => {
 marketRouter.get("/options/:symbol", async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
   const expiry = req.query.expiry ? String(req.query.expiry) : undefined;
+  const requireQuotes = req.query.requireQuotes === "1";
   try {
-    const data = await cached(`options:${symbol}:${expiry ?? "front"}`, 60_000, () => {
-      const attempts: Array<[string, () => Promise<any>]> = [];
-      if (schwabSourceEnabled()) {
-        attempts.push([
-          "schwab",
-          () => requireChain("schwab", () => schwab.optionChain(symbol, expiry)),
-        ]);
+    const data = await cached(
+      `options:${symbol}:${expiry ?? "front"}:${requireQuotes ? "quoted" : "any"}`,
+      60_000,
+      () => {
+        const attempts: Array<[string, () => Promise<any>]> = [];
+        if (schwabSourceEnabled()) {
+          attempts.push([
+            "schwab",
+            () => requireChain("schwab", () => schwab.optionChain(symbol, expiry)),
+          ]);
+        }
+        attempts.push(
+          ["nasdaq", () => requireChain("nasdaq", () => nasdaq.optionChain(symbol, expiry))],
+          [
+            "yahoo",
+            () =>
+              requireChain("yahoo", async () => {
+                const requested = expiry ? Math.floor(Date.parse(`${expiry}T00:00:00Z`) / 1000) : undefined;
+                const y = await yahoo.options(symbol, requested);
+                return {
+                  symbol: y.symbol,
+                  underlyingPrice: y.underlyingPrice,
+                  expirationDates: y.expirationDates.map((d: number) => new Date(d * 1000).toISOString().slice(0, 10)),
+                  selectedDate: y.selectedDate ? new Date(y.selectedDate * 1000).toISOString().slice(0, 10) : null,
+                  calls: y.calls,
+                  puts: y.puts,
+                };
+              }),
+          ]
+        );
+        const checked = attempts.map(
+          ([label, fn]) =>
+            [
+              label,
+              async () => {
+                const chain = await fn();
+                return requireQuotes ? requireQuoteTimestamps(label, chain) : chain;
+              },
+            ] as [string, () => Promise<any>]
+        );
+        return withFallback(checked);
       }
-      attempts.push(
-        ["nasdaq", () => requireChain("nasdaq", () => nasdaq.optionChain(symbol, expiry))],
-        [
-          "yahoo",
-          () =>
-            requireChain("yahoo", async () => {
-              const y = await yahoo.options(symbol);
-              return {
-                symbol: y.symbol,
-                underlyingPrice: y.underlyingPrice,
-                expirationDates: y.expirationDates.map((d: number) => new Date(d * 1000).toISOString().slice(0, 10)),
-                selectedDate: y.selectedDate ? new Date(y.selectedDate * 1000).toISOString().slice(0, 10) : null,
-                calls: y.calls,
-                puts: y.puts,
-              };
-            }),
-        ]
-      );
-      return withFallback(attempts);
-    });
+    );
     res.json(data);
   } catch (err) {
     fail(req, res, err);

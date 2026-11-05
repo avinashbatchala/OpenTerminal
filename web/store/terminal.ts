@@ -45,6 +45,7 @@ type TerminalState = {
   setLayout: (layout: LayoutItem[]) => void;
   addToWatchlist: (s: string) => void;
   removeFromWatchlist: (s: string) => void;
+  setWatchlist: (symbols: string[]) => void;
   resetWorkspace: () => void;
 };
 
@@ -129,6 +130,8 @@ export const useTerminal = create<TerminalState>()(
         }));
       },
       removeFromWatchlist: (s) => set((st) => ({ watchlist: st.watchlist.filter((x) => x !== s) })),
+      setWatchlist: (symbols) =>
+        set({ watchlist: Array.from(new Set(symbols.map((x) => x.toUpperCase()))).filter(Boolean) }),
       resetWorkspace: () => set({ widgets: DEFAULT_WIDGETS, layout: DEFAULT_LAYOUT }),
     }),
     {

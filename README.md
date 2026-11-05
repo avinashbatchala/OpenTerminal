@@ -49,6 +49,7 @@ No signup. No credit card. No rate‑limited demo tier. Clone it, `npm install`,
 - 💼 **Portfolio tracker** — log buy/sell transactions, track average cost, realized & unrealized P&L (persisted in SQLite)
 - 📅 **Calendar** — economic events (Fed, ECB, CPI, NFP and more) with consensus forecast, previous reading and, for the major US/EU releases, the actual outcome; plus a per‑watchlist earnings calendar with click‑through history showing forecast vs. actual EPS for the last several quarters and the stock's next‑day price move
 - 🤖 **Floating AI assistant** (optional) — open a chat panel from the bottom‑right without leaving the workspace; it keeps the conversation while closed, captures the active ticker at send time, and can pull quotes, history, options, news, insider filings, and macro data through Claude tools
+- 🛰️ **Opportunity Scanner** (disabled by default) — deterministic options screens from your watchlist with Intraday and Swing views, exact strategy legs, a $250 modeled-loss gate, lifecycle monitoring, unread alerts, and optional structured AI ranking. Requires explicit review/activation and never places orders.
 - ⚡ **Near real‑time updates** — quotes and indexes refresh every second with a subtle flash on change, so you always know what just moved
 - ⌨️ **Keyboard shortcuts** everywhere — `⌘K` to search, `⌥1`–`⌥8` to add any widget
 
@@ -207,10 +208,18 @@ Two optional knobs for the assistant, both standard for the Anthropic SDK:
 
 Values saved in Settings override `.env`; clearing a saved value falls back to the corresponding `ANTHROPIC_*` variable.
 
+### Opportunity Scanner
+
+The scanner ships **disabled** with draft recipe parameters and no accepted configuration. Open `/opportunities` from the terminal’s top bar (or directly) and review fees, expiry ranges, quote/liquidity limits, contract selection, history assumptions, and at least one recipe version/parameter set before activating. The page synchronizes the browser watchlist to the API; watchlist conflicts between tabs are explicit.
+
+When enabled, the API process runs bounded scans about every five minutes during verified US regular sessions, monitors active setups even after they leave discovery filters, and records lifecycle events, pin/dismiss preferences, monitoring gaps, and deduplicated alerts. Intraday setups expire at the regular-session close; swing setups expire at expiry-day regular-session open. The $250 modeled-loss limit includes configured fees; slippage is shown separately. Missing or stale required data holds a candidate rather than confirming it. IV-history-dependent recipes remain warming up until enough distinct observations exist.
+
+No orders, brokerage reads, fills, positions, or P&L are inferred. AI is explanatory/ranking only and cannot override deterministic eligibility, legs, or risk. See [Opportunity Scanner operations](docs/opportunity-scanner-operations.md), the [product specification](docs/opportunity-scanner-spec.md), and the [v1 recipe review draft](docs/opportunity-recipes-v1.md). The scanner is not activated by development setup and no paid model evaluations are run by the automated tests.
+
 ### Security defaults
 
 - The API binds to `127.0.0.1` and only accepts browser requests from `http://localhost:3000` by default — nothing else on your network can reach it out of the box.
-- The portfolio, AI, Schwab-specific, and streaming endpoints require a shared secret. If you don't set `API_KEY` yourself, the API generates one on first run and saves it to `data/.api-key`; the bundled web app reads that file automatically, so local dev stays zero-config.
+- The portfolio, AI, scanner, Schwab-specific, and streaming endpoints require a shared secret. If you don't set `API_KEY` yourself, the API generates one on first run and saves it to `data/.api-key`; the bundled web app reads that file automatically, so local dev stays zero-config.
 - Optional Schwab OAuth tokens live in `data/.schwab-token.json` (mode `0600`, gitignored). Runtime settings — including an AI key saved from the Settings page — live in `data/settings.json` (mode `0600`, gitignored). Both are used only by the API process; the browser only ever reaches the server-side proxy.
 - To expose this beyond your own machine, set `API_HOST=0.0.0.0`, `API_KEY=<a-strong-secret>` (on both the api and web processes), and `WEB_ORIGIN=<your actual origin>` explicitly. Don't do this without also keeping dependencies patched — see [Known limitations](#known-limitations) below.
 - The `/api/ai` rate limit (10 req/min) keys on `req.ip`. Calls made through the bundled web proxy all arrive from that proxy's own address, so by default every caller sharing it shares one bucket. If you're serving more than one real user through it, set `TRUST_PROXY=1` on the api process **only if** you also run your own reverse proxy in front of the web service that sets `X-Forwarded-For` from the real client and doesn't let visitors set it themselves — otherwise a caller can forge that header to dodge the limit.
@@ -245,14 +254,16 @@ Portfolio data, Schwab tokens, and runtime settings persist in the `terminal-dat
 ├── server/                  # Express + TypeScript API
 │   └── src/
 │       ├── providers/       # schwab, nasdaq, tradingview, yahoo, stooq, fred, econcalendar, coingecko, binance, news
-│       ├── routes/          # market, portfolio, ai, schwab, stream (SSE)
+│       ├── routes/          # market, portfolio, ai, scanner, schwab, stream (SSE)
+│       ├── scanner/         # recipes, risk, lifecycle, scheduler, AI assessment, persistence
 │       ├── cache.ts         # TTL cache with stale-on-error fallback
 │       └── db.ts            # SQLite (better-sqlite3, WAL)
 └── web/                      # Next.js 15 + React 19 + Tailwind 4
     ├── components/           # TopBar, Sidebar, Workspace, CommandPalette
     ├── components/chat/      # floating AI launcher, panel, provider
+    ├── components/scanner/   # opportunity configuration and detail UI
     ├── components/widgets/   # Chart, Quote, Watchlist, News, Screener, Heatmap, Crypto, Options, Macro, Portfolio, Calendar
-    ├── lib/                  # API client, chat state, technical indicators
+    ├── lib/                  # API client, chat state, scanner types, technical indicators
     └── store/                # Zustand store (workspace layout, persisted)
 ```
 

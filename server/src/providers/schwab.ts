@@ -33,6 +33,7 @@ type SchwabInstrument = {
 };
 
 type SchwabOptionContract = {
+  symbol?: string;
   strikePrice?: number;
   last?: number;
   bid?: number;
@@ -41,6 +42,17 @@ type SchwabOptionContract = {
   openInterest?: number;
   volatility?: number;
   inTheMoney?: boolean;
+  multiplier?: number;
+  settlementType?: string;
+  expirationDate?: string;
+  quoteTimeInLong?: number;
+  deliverableNote?: string;
+  optionDeliverables?: Array<{
+    symbol?: string;
+    deliverableUnits?: number;
+    assetType?: string;
+    deliverableType?: string;
+  }>;
 };
 
 type SchwabOptionChain = {
@@ -60,6 +72,13 @@ export type SchwabOptionRow = {
   openInterest: number | null;
   impliedVolatility: number | null;
   inTheMoney: boolean;
+  contractSymbol?: string | null;
+  optionType?: "call" | "put";
+  expiry?: string | null;
+  multiplier?: number | null;
+  deliverable?: string | null;
+  quoteTime?: number | null;
+  source?: string;
 };
 
 export type SchwabChain = {
@@ -337,8 +356,17 @@ export async function history(symbol: string, rangeKey: string): Promise<Candle[
   return mapSchwabCandles(json.candles);
 }
 
-function mapOptionContract(raw: SchwabOptionContract): SchwabOptionRow {
+function mapOptionContract(
+  raw: SchwabOptionContract,
+  optionType: "call" | "put"
+): SchwabOptionRow {
   const volatility = num(raw.volatility);
+  const deliverables = (raw.optionDeliverables ?? [])
+    .map((entry) => {
+      const units = num(entry.deliverableUnits);
+      return entry.symbol && units !== null ? `${units} ${entry.symbol}` : null;
+    })
+    .filter((entry): entry is string => Boolean(entry));
   return {
     strike: num(raw.strikePrice),
     lastPrice: num(raw.last),
@@ -349,19 +377,30 @@ function mapOptionContract(raw: SchwabOptionContract): SchwabOptionRow {
     // Schwab reports volatility as a percentage; the UI expects a fraction.
     impliedVolatility: volatility === null ? null : volatility / 100,
     inTheMoney: Boolean(raw.inTheMoney),
+    contractSymbol: raw.symbol ?? null,
+    optionType,
+    expiry: raw.expirationDate?.slice(0, 10) ?? null,
+    multiplier: num(raw.multiplier),
+    deliverable: deliverables.length ? deliverables.join("; ") : raw.deliverableNote ?? null,
+    quoteTime: (() => {
+      const value = num(raw.quoteTimeInLong);
+      return value === null ? null : Math.floor(value / 1000);
+    })(),
+    source: "schwab",
   };
 }
 
 function contractsForDate(
   map: Record<string, Record<string, SchwabOptionContract[]>> | undefined,
-  date: string | null
+  date: string | null,
+  optionType: "call" | "put"
 ): SchwabOptionRow[] {
   if (!map || !date) return [];
   const entry = Object.entries(map).find(([key]) => key.split(":")[0] === date);
   if (!entry) return [];
   return Object.values(entry[1])
     .flat()
-    .map(mapOptionContract)
+    .map((row) => mapOptionContract(row, optionType))
     .filter((row) => row.strike !== null);
 }
 
@@ -389,8 +428,8 @@ export function mapSchwabOptionChain(
     underlyingPrice: num(raw.underlyingPrice) ?? num(raw.underlying?.last),
     expirationDates: dates,
     selectedDate,
-    calls: contractsForDate(raw.callExpDateMap, selectedDate),
-    puts: contractsForDate(raw.putExpDateMap, selectedDate),
+    calls: contractsForDate(raw.callExpDateMap, selectedDate, "call"),
+    puts: contractsForDate(raw.putExpDateMap, selectedDate, "put"),
   };
 }
 

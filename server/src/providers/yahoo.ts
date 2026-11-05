@@ -262,7 +262,7 @@ export async function options(symbol: string, date?: number): Promise<any> {
   const result = json?.optionChain?.result?.[0];
   if (!result) throw new Error("yahoo: no option chain for " + symbol);
   const chain = result.options?.[0] ?? { calls: [], puts: [] };
-  const pick = (o: any) => ({
+  const pick = (o: any, optionType: "call" | "put") => ({
     strike: n(o.strike),
     lastPrice: n(o.lastPrice),
     bid: n(o.bid),
@@ -273,14 +273,21 @@ export async function options(symbol: string, date?: number): Promise<any> {
     openInterest: n(o.openInterest),
     impliedVolatility: n(o.impliedVolatility),
     inTheMoney: !!o.inTheMoney,
+    contractSymbol: typeof o.contractSymbol === "string" ? o.contractSymbol : null,
+    optionType,
+    expiry: n(o.expiration) ? new Date(n(o.expiration)! * 1000).toISOString().slice(0, 10) : null,
+    multiplier: n(o.contractSize),
+    deliverable: null,
+    quoteTime: n(o.lastTradeDate),
+    source: "yahoo",
   });
   return {
     symbol,
     underlyingPrice: n(result.quote?.regularMarketPrice),
     expirationDates: result.expirationDates ?? [],
     selectedDate: chain.expirationDate ?? null,
-    calls: (chain.calls ?? []).map(pick),
-    puts: (chain.puts ?? []).map(pick),
+    calls: (chain.calls ?? []).map((row: any) => pick(row, "call")),
+    puts: (chain.puts ?? []).map((row: any) => pick(row, "put")),
   };
 }
 

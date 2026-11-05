@@ -159,6 +159,13 @@ export type NasdaqOptionRow = {
   volume: number | null;
   openInterest: number | null;
   inTheMoney: boolean;
+  contractSymbol?: string | null;
+  optionType?: "call" | "put";
+  expiry?: string | null;
+  multiplier?: number | null;
+  deliverable?: string | null;
+  quoteTime?: number | null;
+  source?: string;
 };
 
 export type NasdaqChain = {
@@ -176,16 +183,61 @@ const num = (s: unknown): number | null => {
   return isFinite(n) ? n : null;
 };
 
+/**
+ * NASDAQ returns option expiries as display strings such as "Nov 4" (with the
+ * year only in the adjacent group header). The app, the scanner, and OCC
+ * contract identifiers all need ISO dates, so resolve the year explicitly and
+ * roll forward across New Year instead of guessing.
+ */
+export function parseNasdaqExpiry(value: unknown, now = new Date()): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  const match = text.match(
+    /^(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:,\s*|\s+)?(\d{4})?$/i
+  );
+  if (!match) return null;
+  const months = [
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+  ];
+  const month = months.indexOf(match[1].slice(0, 3).toLowerCase());
+  const day = Number(match[2]);
+  if (month < 0 || day < 1 || day > 31) return null;
+  let year = match[3] ? Number(match[3]) : now.getUTCFullYear();
+  const build = (candidateYear: number) => {
+    const date = new Date(Date.UTC(candidateYear, month, day, 12));
+    if (date.getUTCMonth() !== month || date.getUTCDate() !== day) return null;
+    return date;
+  };
+  let date = build(year);
+  if (!date) return null;
+  // "Jan 16" seen late in December belongs to the next year, and a stale
+  // January entry seen in November belongs to the next year as well.
+  if (!match[3] && date.getTime() < now.getTime() - 30 * 86_400_000) {
+    year += 1;
+    date = build(year);
+  }
+  return date ? date.toISOString().slice(0, 10) : null;
+}
+
 export async function optionChain(symbol: string, expiry?: string): Promise<NasdaqChain> {
   const to = new Date(Date.now() + 60 * 86_400_000);
   const data = await nfetch(
     `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol)}/option-chain?assetclass=stocks&limit=2000&fromdate=${fmtDate(new Date())}&todate=${fmtDate(to)}`
   );
-  const rows: any[] = (data.table?.rows ?? []).filter((r: any) => r.strike);
-  const dates = [...new Set<string>(rows.map((r) => r.expiryDate))];
+  const now = new Date();
+  const rows: any[] = (data.table?.rows ?? [])
+    .filter((r: any) => r.strike)
+    .map((row: any) => ({ ...row, expiryIso: parseNasdaqExpiry(row.expiryDate, now) }))
+    .filter((row: any) => row.expiryIso);
+  const dates = [...new Set<string>(rows.map((r: any) => r.expiryIso))].sort();
   const selected = expiry && dates.includes(expiry) ? expiry : dates[0] ?? null;
-  const selectedRows = rows.filter((r) => r.expiryDate === selected);
+  const selectedRows = rows.filter((r: any) => r.expiryIso === selected);
 
+  const occ = (expiryDate: string | null, type: "C" | "P", strike: number | null) => {
+    if (!expiryDate || strike === null) return null;
+    const compact = expiryDate.replaceAll("-", "").slice(2);
+    return `${symbol}${compact}${type}${String(Math.round(strike * 1000)).padStart(8, "0")}`;
+  };
   const calls: NasdaqOptionRow[] = [];
   const puts: NasdaqOptionRow[] = [];
   for (const r of selectedRows) {
@@ -193,10 +245,14 @@ export async function optionChain(symbol: string, expiry?: string): Promise<Nasd
     calls.push({
       strike, lastPrice: num(r.c_Last), bid: num(r.c_Bid), ask: num(r.c_Ask),
       volume: num(r.c_Volume), openInterest: num(r.c_Openinterest), inTheMoney: !!r.c_colour,
+      contractSymbol: occ(selected, "C", strike), optionType: "call", expiry: selected,
+      multiplier: null, deliverable: null, quoteTime: null, source: "nasdaq",
     });
     puts.push({
       strike, lastPrice: num(r.p_Last), bid: num(r.p_Bid), ask: num(r.p_Ask),
       volume: num(r.p_Volume), openInterest: num(r.p_Openinterest), inTheMoney: !!r.p_colour,
+      contractSymbol: occ(selected, "P", strike), optionType: "put", expiry: selected,
+      multiplier: null, deliverable: null, quoteTime: null, source: "nasdaq",
     });
   }
 
