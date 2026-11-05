@@ -268,6 +268,22 @@ const RANGE_SPEC: Record<string, RangeSpec> = {
   MAX: { periodType: "year", period: 20, frequencyType: "monthly", frequency: 1, extended: false },
 };
 
+const SCHWAB_MINUTE_FREQUENCIES = new Set([1, 5, 10, 15, 30]);
+
+/**
+ * Resolve the Schwab `frequency` for a range. Daily/weekly/monthly ranges cannot
+ * be re-sampled, so an intraday interval request only applies to 1D/5D. Callers
+ * that need a specific bar size (the scanner needs five-minute bars) pass it
+ * explicitly instead of assuming the provider default.
+ */
+export function historyFrequency(rangeKey: string, intervalMinutes?: number): number {
+  const spec = RANGE_SPEC[rangeKey] ?? RANGE_SPEC["6M"];
+  if (spec.frequencyType !== "minute") return spec.frequency;
+  return intervalMinutes && SCHWAB_MINUTE_FREQUENCIES.has(intervalMinutes)
+    ? intervalMinutes
+    : spec.frequency;
+}
+
 export function mapSchwabCandles(candles: SchwabCandle[] | undefined): Candle[] {
   const out: Candle[] = [];
   for (const c of candles ?? []) {
@@ -326,12 +342,16 @@ function newYorkStartOfDay(now = new Date()): number {
   return midnightUTCGuess - offset * 60_000;
 }
 
-export async function history(symbol: string, rangeKey: string): Promise<Candle[]> {
+export async function history(
+  symbol: string,
+  rangeKey: string,
+  intervalMinutes?: number
+): Promise<Candle[]> {
   const spec = RANGE_SPEC[rangeKey] ?? RANGE_SPEC["6M"];
   const params = new URLSearchParams({
     symbol,
     frequencyType: spec.frequencyType,
-    frequency: String(spec.frequency),
+    frequency: String(historyFrequency(rangeKey, intervalMinutes)),
     needExtendedHoursData: String(spec.extended),
     needPreviousClose: "true",
   });

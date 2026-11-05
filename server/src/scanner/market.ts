@@ -295,7 +295,10 @@ export function createHttpScannerMarketData(): ScannerMarketData {
       return normalizeQuote(raw, symbol);
     },
     async history(symbol, horizon) {
-      const range = horizon === "intraday" ? "1D" : "1Y";
+      // Intraday features require five-minute bars. Ask for that spacing
+      // explicitly; the market route gates each provider so a one-minute or
+      // daily response is rejected rather than relabeled.
+      const range = horizon === "intraday" ? "1D&interval=5m" : "1Y";
       const raw = await getJson<any>(`/history/${encodeURIComponent(symbol)}?range=${range}`);
       return normalizeHistory(symbol, horizon, raw, new Date());
     },

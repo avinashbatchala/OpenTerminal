@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  historyFrequency,
   mapSchwabCandles,
   mapSchwabOptionChain,
   mapSchwabQuote,
   mapSchwabSearch,
 } from "./schwab.js";
 import { parseChartEquity, parseLevelOne } from "./schwabStreamer.js";
+
+describe("Schwab history interval", () => {
+  it("uses the default one-minute frequency for a 1D chart", () => {
+    expect(historyFrequency("1D")).toBe(1);
+  });
+
+  it("honors a five-minute interval request for intraday ranges", () => {
+    expect(historyFrequency("1D", 5)).toBe(5);
+    expect(historyFrequency("5D", 15)).toBe(15);
+  });
+
+  it("keeps daily ranges daily even when an intraday interval is requested", () => {
+    expect(historyFrequency("1Y", 5)).toBe(1);
+  });
+
+  it("ignores a frequency Schwab does not support", () => {
+    expect(historyFrequency("1D", 7)).toBe(1);
+  });
+});
 
 describe("Schwab market data mapping", () => {
   it("normalizes a quote and converts yield percentages to fractions", () => {

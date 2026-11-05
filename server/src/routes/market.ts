@@ -130,6 +130,61 @@ async function requireRows<T>(label: string, fn: () => Promise<T[]>): Promise<T[
   return rows;
 }
 
+/**
+ * Callers that need a specific bar size (the scanner needs five-minute bars)
+ * pass `interval=5m`. A provider that succeeds with a different spacing must
+ * fail so `withFallback` continues to one that honors the request; silently
+ * relabeling daily or one-minute bars as five-minute data would corrupt signals.
+ */
+function parseInterval(
+  value: unknown
+): { minutes: number; seconds: number; yahoo: string } | undefined {
+  if (value === undefined) return undefined;
+  const match = String(value).trim().match(/^(\d{1,2})m$/);
+  const minutes = match ? Number(match[1]) : NaN;
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) {
+    throw new Error(`unsupported interval "${String(value)}"; use e.g. 1m, 5m, 15m`);
+  }
+  return { minutes, seconds: minutes * 60, yahoo: `${minutes}m` };
+}
+
+function requireInterval<T extends { time: number }>(
+  label: string,
+  rows: T[],
+  expectedSeconds: number | undefined
+): T[] {
+  if (!expectedSeconds) return rows;
+  const times = rows
+    .map((row) => row?.time)
+    .filter((time): time is number => typeof time === "number")
+    .sort((a, b) => a - b);
+  if (times.length < 2) throw new Error(`${label}: insufficient bars to verify bar interval`);
+  const gaps = times
+    .slice(1)
+    .map((time, index) => time - times[index])
+    .filter((gap) => gap > 0)
+    .sort((a, b) => a - b);
+  if (gaps.length === 0) throw new Error(`${label}: insufficient bars to verify bar interval`);
+  const middle = Math.floor(gaps.length / 2);
+  const median = gaps.length % 2 ? gaps[middle] : (gaps[middle - 1] + gaps[middle]) / 2;
+  if (median < expectedSeconds * 0.8 || median > expectedSeconds * 1.2) {
+    throw new Error(
+      `${label}: expected ${expectedSeconds}-second bars, received a median spacing of ${Math.round(
+        median
+      )} seconds`
+    );
+  }
+  return rows;
+}
+
+function intervalRows(
+  label: string,
+  expectedSeconds: number | undefined,
+  fn: () => Promise<yahoo.Candle[]>
+): () => Promise<yahoo.Candle[]> {
+  return async () => requireInterval(label, await requireRows(label, fn), expectedSeconds);
+}
+
 async function requireChain<T extends { expirationDates: string[] }>(
   label: string,
   fn: () => Promise<T>
@@ -293,28 +348,54 @@ marketRouter.get("/quotes", async (req, res) => {
 marketRouter.get("/history/:symbol", async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
   const rangeKey = String(req.query.range ?? "6M");
+  let interval: ReturnType<typeof parseInterval>;
   try {
-    const data = await cached(`history:${symbol}:${rangeKey}`, HISTORY_TTL, () => {
-      if (binance.CRYPTO_SYMBOLS.has(symbol)) return binance.history(symbol, rangeKey);
-      if (isVix(symbol)) return vixHistory(rangeKey);
+    interval = parseInterval(req.query.interval);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "invalid interval" });
+    return;
+  }
+  const expectedSeconds = interval?.seconds;
+  try {
+    const data = await cached(
+      `history:${symbol}:${rangeKey}:${interval?.yahoo ?? "default"}`,
+      HISTORY_TTL,
+      () => {
+        if (binance.CRYPTO_SYMBOLS.has(symbol)) return binance.history(symbol, rangeKey);
+        if (isVix(symbol)) return vixHistory(rangeKey);
 
-      const attempts: Array<[string, () => Promise<yahoo.Candle[]>]> = [];
-      if (schwabSourceEnabled()) {
-        attempts.push(["schwab", () => requireRows("schwab", () => schwab.history(symbol, rangeKey))]);
-      }
-      attempts.push(
-        ["nasdaq", () => requireRows("nasdaq", () => nasdaq.history(symbol, rangeKey))],
-        [
-          "yahoo",
-          () =>
-            requireRows("yahoo", () =>
-              yahoo.history(symbol, yahooRange(rangeKey).range, yahooRange(rangeKey).interval)
+        const attempts: Array<[string, () => Promise<yahoo.Candle[]>]> = [];
+        if (schwabSourceEnabled()) {
+          attempts.push([
+            "schwab",
+            intervalRows("schwab", expectedSeconds, () =>
+              schwab.history(symbol, rangeKey, interval?.minutes)
             ),
-        ],
-        ["stooq", () => requireRows("stooq", () => stooq.history(symbol))]
-      );
-      return withFallback(attempts);
-    });
+          ]);
+        }
+        attempts.push(
+          [
+            "nasdaq",
+            intervalRows("nasdaq", expectedSeconds, () => nasdaq.history(symbol, rangeKey)),
+          ],
+          [
+            "yahoo",
+            intervalRows("yahoo", expectedSeconds, () =>
+              yahoo.history(
+                symbol,
+                yahooRange(rangeKey).range,
+                interval?.yahoo ?? yahooRange(rangeKey).interval
+              )
+            ),
+          ],
+          [
+            "stooq",
+            intervalRows("stooq", expectedSeconds, () => stooq.history(symbol)),
+          ]
+        );
+        return withFallback(attempts);
+      }
+    );
     if (!Array.isArray(data) || data.length === 0) throw new Error("empty history from all providers");
     res.json(data);
   } catch (err) {
