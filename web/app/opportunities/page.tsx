@@ -18,6 +18,7 @@ import {
 import { useTerminal } from "../../store/terminal";
 import ScannerConfigPanel from "../../components/scanner/ScannerConfigPanel";
 import OpportunityDetail from "../../components/scanner/OpportunityDetail";
+import { HealthBadge, StateBadge } from "../../components/scanner/StatusBadges";
 
 type WatchlistResponse = {
   ok: boolean;
@@ -37,24 +38,18 @@ type ProviderHealth = {
   }>;
 };
 
-function StateBadge({ state }: { state: string }) {
-  const className =
-    state === "entry_ready"
-      ? "up"
-      : state === "invalidated"
-      ? "down"
-      : state === "expired"
-      ? "dim"
-      : "amber";
-  return <span className={className}>{state.replace("_", " ").toUpperCase()}</span>;
-}
+type EmptyNotice = {
+  title: string;
+  detail: string;
+  action?: { label: string; run: () => void };
+};
 
-function HealthBadge({ health }: { health: string }) {
-  return (
-    <span className={health === "current" ? "up" : health === "stale" ? "amber" : "down"}>
-      {health.toUpperCase()}
-    </span>
-  );
+const HORIZONS: Horizon[] = ["intraday", "swing"];
+const ACTIVE_STATES = new Set(["watching", "entry_ready"]);
+const TERMINAL_STATES = new Set(["invalidated", "expired"]);
+
+function directionClass(direction: string) {
+  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "dim";
 }
 
 export default function OpportunitiesPage() {
@@ -63,6 +58,7 @@ export default function OpportunitiesPage() {
   const setWatchlist = useTerminal((state) => state.setWatchlist);
   const [horizon, setHorizon] = useState<Horizon>("intraday");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [strategy, setStrategy] = useState("all");
   const [stateFilter, setStateFilter] = useState("all");
   const [pinnedOnly, setPinnedOnly] = useState(false);
@@ -82,12 +78,12 @@ export default function OpportunitiesPage() {
   });
   const status = statusQuery.data;
 
+  // Always fetch the full horizon (history included) so filters and counts stay
+  // instant and the list does not flash when toggling History.
   const opportunitiesQuery = useQuery({
-    queryKey: ["scanner", "opportunities", horizon, historyView],
+    queryKey: ["scanner", "opportunities", horizon],
     queryFn: () =>
-      apiGet<Opportunity[]>(
-        `/api/scanner/opportunities?horizon=${horizon}&history=true&limit=500`
-      ),
+      apiGet<Opportunity[]>(`/api/scanner/opportunities?horizon=${horizon}&history=true&limit=500`),
     enabled: Boolean(status),
     refetchInterval: 30_000,
     retry: 0,
@@ -216,25 +212,82 @@ export default function OpportunitiesPage() {
   });
 
   const all = opportunitiesQuery.data ?? [];
+  const query = search.trim().toUpperCase();
   const filtered = all.filter((opportunity) => {
-    if (!historyView && !["watching", "entry_ready"].includes(opportunity.state)) return false;
-    if (!historyView && opportunity.archived) return false;
+    const active = ACTIVE_STATES.has(opportunity.state) && !opportunity.archived;
+    if (!historyView && !active) return false;
     if (!includeDismissed && opportunity.dismissed) return false;
     if (pinnedOnly && !opportunity.pinned) return false;
     if (stateFilter !== "all" && opportunity.state !== stateFilter) return false;
     if (strategy !== "all" && opportunity.strategy !== strategy) return false;
+    if (
+      query &&
+      !`${opportunity.symbol} ${STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy} ${
+        opportunity.recipeId
+      }`
+        .toUpperCase()
+        .includes(query)
+    ) {
+      return false;
+    }
     return true;
   });
-  const empty =
-    filtered.length === 0
-      ? emptyState(
-          status,
-          filtered,
-          strategy !== "all" || stateFilter !== "all" || pinnedOnly || includeDismissed
-        )
-      : null;
+
+  const activeCount = all.filter(
+    (opportunity) => ACTIVE_STATES.has(opportunity.state) && !opportunity.archived
+  ).length;
+  const filtersActive =
+    search.trim() !== "" ||
+    strategy !== "all" ||
+    stateFilter !== "all" ||
+    pinnedOnly ||
+    includeDismissed;
+  const scannerEmpty = emptyState(status, all, filtersActive);
+
+  const clearFilters = () => {
+    setSearch("");
+    setStrategy("all");
+    setStateFilter("all");
+    setPinnedOnly(false);
+    setIncludeDismissed(false);
+  };
+
+  const buildEmptyNotice = (): EmptyNotice | null => {
+    if (filtered.length > 0) return null;
+    if (scannerEmpty) return scannerEmpty;
+    if (!historyView && activeCount === 0 && all.length > 0) {
+      return {
+        title: "No active setups",
+        detail: `${all.length} historical setup${all.length === 1 ? " is" : "s are"} available for this horizon.`,
+        action: { label: "Show history", run: () => setHistoryView(true) },
+      };
+    }
+    if (!includeDismissed && all.some((opportunity) => opportunity.dismissed)) {
+      return {
+        title: "All matching setups are dismissed",
+        detail: "Dismissed setups stay monitored but are hidden by default.",
+        action: { label: "Show dismissed", run: () => setIncludeDismissed(true) },
+      };
+    }
+    return {
+      title: "No matches",
+      detail: "No setups match the current search and filters.",
+      action: filtersActive ? { label: "Clear filters", run: clearFilters } : undefined,
+    };
+  };
+  const emptyNotice = buildEmptyNotice();
+
   const lastRun = status?.lastRun;
   const unread = notificationsQuery.data ?? [];
+  const recipeNames = new Map((status?.definitions ?? []).map((definition) => [definition.id, definition.name]));
+
+  const selectHorizon = (next: Horizon) => {
+    if (next === horizon) return;
+    setHorizon(next);
+    // Setups are scoped to a horizon; keeping the old selection would leave a
+    // stale symbol analysis beside the new list.
+    setSelectedId(null);
+  };
 
   const useServerWatchlist = () => {
     if (!syncConflict) return;
@@ -264,126 +317,227 @@ export default function OpportunitiesPage() {
 
   return (
     <div className="h-screen overflow-auto">
-      <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 px-3 h-9 bg-[var(--panel-2)] border-b border-[var(--border)] text-[11px]">
-        <span className="amber font-bold tracking-widest">OPPORTUNITY SCANNER</span>
-        <Link href="/" className="dim hover:text-[var(--amber)]">← TERMINAL</Link>
-        <Link href="/settings" className="dim hover:text-[var(--amber)]">⚙ SETTINGS</Link>
-        <span className="dim ml-auto">
-          {status ? `${status.session.label} · watchlist ${status.config.watchlist.length}/${status.config.maxWatchlistSymbols}` : "loading…"}
+      <header className="sticky top-0 z-20 flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-[var(--panel-2)] px-3 py-1.5 text-[11px]">
+        <span className="amber font-bold tracking-[0.18em]">OPPORTUNITY SCANNER</span>
+        <Link href="/" className="dim hover:text-[var(--amber)]">
+          ← Terminal
+        </Link>
+        <Link href="/settings" className="dim hover:text-[var(--amber)]">
+          Settings
+        </Link>
+        <span className="ml-auto flex flex-wrap items-center gap-2 text-[10px]">
+          {status && (
+            <>
+              <span
+                className={`scanner-badge ${
+                  status.config.enabled ? "scanner-badge--up" : "scanner-badge--muted"
+                }`}
+              >
+                {status.config.enabled ? "● Live" : "○ Paused"}
+              </span>
+              <span className="dim">{status.session.label}</span>
+              <span className="dim">
+                Watchlist {status.config.watchlist.length}/{status.config.maxWatchlistSymbols}
+              </span>
+            </>
+          )}
         </span>
       </header>
 
-      <main className="p-3 space-y-3">
+      <main className="mx-auto w-full max-w-[1700px] space-y-3 p-3">
         {statusQuery.error && (
-          <div className="border border-[var(--down)] p-2 down text-[11px]">
+          <div role="alert" className="rounded-md border border-[var(--down)] bg-[var(--panel)] px-3 py-2 text-[11px] down">
             {(statusQuery.error as Error).message}
           </div>
         )}
 
         {status && (
           <>
-            <section className="border border-[var(--border)] bg-[var(--panel)]">
-              <div className="panel-title cursor-default">
-                <span>Scanner status</span>
-                <span className="flex gap-2">
-                  <span className={status.config.enabled ? "up" : "down"}>
-                    {status.config.enabled ? "● ENABLED" : "○ PAUSED"}
-                  </span>
-                  <span className={status.readiness.ready ? "up" : "amber"}>
-                    {status.readiness.ready ? "READY" : "CONFIG REQUIRED"}
+            <section className="scanner-panel">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-[11px]">
+                <span className={status.config.enabled ? "up font-bold" : "down font-bold"}>
+                  {status.config.enabled ? "● ENABLED" : "○ PAUSED"}
+                </span>
+                <span className={status.readiness.ready ? "up" : "amber"}>
+                  {status.readiness.ready ? "READY" : "CONFIG REQUIRED"}
+                </span>
+                <span className="h-3 w-px bg-[var(--border)]" aria-hidden="true" />
+                <span className="dim">
+                  Session <span className="text-[var(--text)]">{status.session.label}</span>
+                </span>
+                <span className="dim">
+                  Last scan{" "}
+                  <span className="text-[var(--text)]">
+                    {lastRun ? `${formatDateTime(lastRun.startedAt)} · ${lastRun.status}` : "none"}
                   </span>
                 </span>
+                <span className="dim">
+                  Next{" "}
+                  <span className="text-[var(--text)]">
+                    {status.nextScheduledAt ? formatDateTime(status.nextScheduledAt) : "—"}
+                  </span>
+                </span>
+                {status.unreadNotifications > 0 && (
+                  <span className="amber">{status.unreadNotifications} unread alert{status.unreadNotifications === 1 ? "" : "s"}</span>
+                )}
               </div>
-              <div className="p-2 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-1.5 text-[11px]">
-                <div><div className="dim text-[9px] uppercase">Session</div>{status.session.label}</div>
-                <div><div className="dim text-[9px] uppercase">Last scan</div>{lastRun ? `${formatDateTime(lastRun.startedAt)} · ${lastRun.status}` : "none"}</div>
-                <div><div className="dim text-[9px] uppercase">Next scheduled</div>{status.nextScheduledAt ? formatDateTime(status.nextScheduledAt) : "—"}</div>
-                <div><div className="dim text-[9px] uppercase">Scan interval</div>{status.config.scanIntervalMinutes} min</div>
-                <div><div className="dim text-[9px] uppercase">Unread alerts</div>{status.unreadNotifications}</div>
-                <div>
-                  <div className="dim text-[9px] uppercase">AI usage</div>
-                  {status.aiUsage.estimatedCostUsd === null
-                    ? `${status.aiUsage.inputTokens + status.aiUsage.outputTokens} tokens · cost unknown · ${status.aiUsage.unknownCostAssessments} unpriced assessment(s)`
-                    : `${status.aiUsage.inputTokens + status.aiUsage.outputTokens} tokens · ${formatUsd(status.aiUsage.estimatedCostUsd)}`}
-                </div>
-              </div>
-              {providerQuery.data && (
-                <div className="border-t border-[var(--border)] px-2 py-1 flex flex-wrap gap-2 text-[10px]">
-                  <span className="dim uppercase tracking-wide">Provider health</span>
-                  {providerQuery.data.providers.map((provider) => (
-                    <span
-                      key={provider.name}
-                      className={provider.failed > 0 ? "amber" : "up"}
-                      title={`${provider.ok} ok / ${provider.failed} failed${
-                        provider.lastLatencyMs === null ? "" : ` · ${provider.lastLatencyMs}ms`
-                      }`}
-                    >
-                      {provider.name} {provider.ok}/{provider.ok + provider.failed}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {lastRun?.coverage && lastRun.coverage.length > 0 && (
-                <details className="border-t border-[var(--border)] p-2 text-[11px]">
-                  <summary className="cursor-pointer dim text-[9px] uppercase tracking-wide">
-                    Coverage and held/excluded symbols ({lastRun.coverage.length})
-                  </summary>
-                  <div className="overflow-x-auto mt-2" tabIndex={0} role="region" aria-label="Scan coverage">
-                    <table className="data-table min-w-[720px]">
-                      <thead><tr><th>Symbol</th><th>Coverage</th><th>Reason</th><th>Recipes</th></tr></thead>
-                      <tbody>
-                        {lastRun.coverage.map((entry) => (
-                          <tr key={entry.symbol}>
-                            <td className="font-bold">{entry.symbol}</td>
-                            <td className={entry.status === "scanned" ? "up" : entry.status === "failed" ? "down" : "amber"}>{entry.status}</td>
-                            <td className="dim">{entry.reason ?? "—"}</td>
-                            <td className="dim text-[10px]">{Object.entries(entry.recipes).map(([key, value]) => `${key}: ${value}`).join(" · ")}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+
+              <details className="border-t border-[var(--border)]">
+                <summary className="scanner-summary">Scanner health, coverage &amp; usage</summary>
+                <div className="space-y-2 px-2 pb-2 text-[11px]">
+                  <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-6">
+                    <div>
+                      <div className="dim text-[9px] uppercase">Session</div>
+                      {status.session.label}
+                    </div>
+                    <div>
+                      <div className="dim text-[9px] uppercase">Last scan</div>
+                      {lastRun ? `${formatDateTime(lastRun.startedAt)} · ${lastRun.status}` : "none"}
+                    </div>
+                    <div>
+                      <div className="dim text-[9px] uppercase">Next scheduled</div>
+                      {status.nextScheduledAt ? formatDateTime(status.nextScheduledAt) : "—"}
+                    </div>
+                    <div>
+                      <div className="dim text-[9px] uppercase">Scan interval</div>
+                      {status.config.scanIntervalMinutes} min
+                    </div>
+                    <div>
+                      <div className="dim text-[9px] uppercase">Unread alerts</div>
+                      {status.unreadNotifications}
+                    </div>
+                    <div>
+                      <div className="dim text-[9px] uppercase">AI usage</div>
+                      {status.aiUsage.estimatedCostUsd === null
+                        ? `${status.aiUsage.inputTokens + status.aiUsage.outputTokens} tokens · cost unknown · ${
+                            status.aiUsage.unknownCostAssessments
+                          } unpriced assessment(s)`
+                        : `${status.aiUsage.inputTokens + status.aiUsage.outputTokens} tokens · ${formatUsd(
+                            status.aiUsage.estimatedCostUsd
+                          )}`}
+                    </div>
                   </div>
-                  {lastRun.failures.length > 0 && (
-                    <ul className="list-disc pl-4 down text-[10px] mt-2">
-                      {lastRun.failures.map((failure) => <li key={failure}>{failure}</li>)}
-                    </ul>
+
+                  <div className="dim">
+                    Synced watchlist (edit in Terminal):{" "}
+                    <span className="text-[var(--text)]">
+                      {status.config.watchlist.length > 0 ? status.config.watchlist.join(", ") : "(empty)"}
+                    </span>
+                  </div>
+
+                  {providerQuery.data && (
+                    <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-2 text-[10px]">
+                      <span className="dim uppercase tracking-wide">Provider health</span>
+                      {providerQuery.data.providers.map((provider) => (
+                        <span
+                          key={provider.name}
+                          className={provider.failed > 0 ? "amber" : "up"}
+                          title={`${provider.ok} ok / ${provider.failed} failed${
+                            provider.lastLatencyMs === null ? "" : ` · ${provider.lastLatencyMs}ms`
+                          }`}
+                        >
+                          {provider.name} {provider.ok}/{provider.ok + provider.failed}
+                        </span>
+                      ))}
+                    </div>
                   )}
-                </details>
-              )}
-              {status.monitoringGaps.length > 0 && (
-                <div className="border-t border-[var(--border)] p-2 text-[10px] down">
-                  Monitoring gaps: {status.monitoringGaps.join(" · ")}
+
+                  {lastRun?.coverage && lastRun.coverage.length > 0 && (
+                    <details className="border-t border-[var(--border)] pt-2">
+                      <summary className="scanner-summary px-0">
+                        Coverage and held/excluded symbols ({lastRun.coverage.length})
+                      </summary>
+                      <div className="mt-1 overflow-x-auto" tabIndex={0} role="region" aria-label="Scan coverage">
+                        <table className="data-table min-w-[720px]">
+                          <thead>
+                            <tr>
+                              <th>Symbol</th>
+                              <th>Coverage</th>
+                              <th>Reason</th>
+                              <th>Recipes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lastRun.coverage.map((entry) => (
+                              <tr key={entry.symbol}>
+                                <td className="font-bold">{entry.symbol}</td>
+                                <td
+                                  className={
+                                    entry.status === "scanned"
+                                      ? "up"
+                                      : entry.status === "failed"
+                                        ? "down"
+                                        : "amber"
+                                  }
+                                >
+                                  {entry.status}
+                                </td>
+                                <td className="dim">{entry.reason ?? "—"}</td>
+                                <td className="dim text-[10px]">
+                                  {Object.entries(entry.recipes)
+                                    .map(([key, value]) => `${key}: ${value}`)
+                                    .join(" · ")}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {lastRun.failures.length > 0 && (
+                        <ul className="mt-1 list-disc pl-4 text-[10px] down">
+                          {lastRun.failures.map((failure) => (
+                            <li key={failure}>{failure}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </details>
+                  )}
                 </div>
-              )}
+              </details>
             </section>
 
+            {status.monitoringGaps.length > 0 && (
+              <div role="alert" className="rounded-md border border-[var(--down)] bg-[var(--panel)] px-3 py-2 text-[10px] down">
+                Monitoring gaps: {status.monitoringGaps.join(" · ")}
+              </div>
+            )}
+
             <details
-              className="border border-[var(--border)] bg-[var(--panel)]"
+              className="scanner-panel"
               open={!status.config.enabled || !status.readiness.ready}
             >
-              <summary className="panel-title cursor-pointer">
-                Configuration and activation review
-              </summary>
-              <div className="p-2">
+              <summary className="scanner-summary">Configuration &amp; activation review</summary>
+              <div className="border-t border-[var(--border)] p-2">
                 <ScannerConfigPanel status={status} />
               </div>
             </details>
 
             {status.pendingWatchlistRemovals.length > 0 && (
-              <section className="border border-[var(--amber-dim)] bg-[var(--panel)] p-2 text-[11px]">
+              <section className="rounded-md border border-[var(--amber-dim)] bg-[var(--panel)] p-2.5 text-[11px]">
                 <div className="amber font-bold">Watchlist removals need a monitoring decision</div>
                 <div className="dim">
                   New discovery is stopped for these symbols. Existing setups remain in monitoring until you choose.
                 </div>
-                <div className="flex flex-wrap gap-2 mt-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   {status.pendingWatchlistRemovals.map((removal) => (
-                    <div key={removal.symbol} className="flex items-center gap-1 border border-[var(--border)] px-2 py-1">
+                    <div
+                      key={removal.symbol}
+                      className="flex items-center gap-1.5 rounded border border-[var(--border)] px-2 py-1"
+                    >
                       <span className="font-bold">{removal.symbol}</span>
                       <span className="dim">{removal.opportunityIds.length} setup(s)</span>
-                      <button type="button" className="term-btn" onClick={() => decide.mutate({ symbol: removal.symbol, decision: "monitor" })}>
+                      <button
+                        type="button"
+                        className="term-btn"
+                        onClick={() => decide.mutate({ symbol: removal.symbol, decision: "monitor" })}
+                      >
                         KEEP MONITORING
                       </button>
-                      <button type="button" className="term-btn" onClick={() => decide.mutate({ symbol: removal.symbol, decision: "archive" })}>
+                      <button
+                        type="button"
+                        className="term-btn"
+                        onClick={() => decide.mutate({ symbol: removal.symbol, decision: "archive" })}
+                      >
                         ARCHIVE
                       </button>
                     </div>
@@ -393,37 +547,61 @@ export default function OpportunitiesPage() {
             )}
 
             {syncConflict && (
-              <section className="border border-[var(--down)] bg-[var(--panel)] p-2 text-[11px]">
+              <section
+                role="alert"
+                className="rounded-md border border-[var(--down)] bg-[var(--panel)] p-2.5 text-[11px]"
+              >
                 <div className="down font-bold">Watchlist changed in another tab</div>
                 <div className="dim">Server list: {syncConflict.current.join(", ") || "(empty)"}</div>
-                <div className="flex gap-2 mt-2">
-                  <button type="button" className="term-btn" onClick={useServerWatchlist}>USE SERVER LIST</button>
-                  <button type="button" className="term-btn" onClick={overwriteWatchlist}>OVERWRITE WITH THIS TAB</button>
+                <div className="mt-2 flex gap-2">
+                  <button type="button" className="term-btn" onClick={useServerWatchlist}>
+                    USE SERVER LIST
+                  </button>
+                  <button type="button" className="term-btn" onClick={overwriteWatchlist}>
+                    OVERWRITE WITH THIS TAB
+                  </button>
                 </div>
               </section>
             )}
-            {syncNotice && <div className="text-[11px] amber">{syncNotice}</div>}
+            {syncNotice && (
+              <div role="status" className="text-[11px] amber">
+                {syncNotice}
+              </div>
+            )}
 
             {unread.length > 0 && (
-              <section className="border border-[var(--border)] bg-[var(--panel)] p-2 text-[11px]">
-                <div className="flex items-center gap-2">
+              <section className="scanner-panel p-2.5 text-[11px]">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="amber font-bold">Unread scanner alerts ({unread.length})</span>
-                  <button type="button" className="term-btn ml-auto" onClick={() => markRead.mutate()} disabled={markRead.isPending}>
+                  <button
+                    type="button"
+                    className="term-btn ml-auto"
+                    onClick={() => markRead.mutate()}
+                    disabled={markRead.isPending}
+                  >
                     MARK ALL READ
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-1 mt-1">
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {unread.slice(0, 12).map((notification) => (
                     <button
                       key={notification.id}
                       type="button"
-                      className="border border-[var(--border)] px-2 py-1 hover:border-[var(--amber-dim)]"
+                      className="scanner-chip"
                       onClick={() => {
                         setHistoryView(true);
                         setSelectedId(notification.opportunityId);
                       }}
                     >
-                      <span className={notification.type === "invalidated" ? "down" : notification.type === "entry_ready" ? "up" : "amber"}>
+                      <span
+                        className={
+                          notification.type === "invalidated"
+                            ? "down"
+                            : notification.type === "entry_ready"
+                              ? "up"
+                              : "amber"
+                        }
+                      >
                         {notification.type.replaceAll("_", " ")}
                       </span>{" "}
                       <span className="dim">{formatDateTime(notification.createdAt)}</span>
@@ -433,97 +611,225 @@ export default function OpportunitiesPage() {
               </section>
             )}
 
-            <section className="border border-[var(--border)] bg-[var(--panel)]">
-              <div className="flex flex-wrap items-center gap-2 p-2 border-b border-[var(--border)]">
-                <div className="flex">
-                  {(["intraday", "swing"] as Horizon[]).map((entry) => (
-                    <button
-                      key={entry}
-                      type="button"
-                      className={`term-btn ${horizon === entry ? "active" : ""}`}
-                      onClick={() => setHorizon(entry)}
-                    >
-                      {entry.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-                <select value={strategy} onChange={(event) => setStrategy(event.target.value)} aria-label="Filter by strategy">
-                  <option value="all">All strategies</option>
-                  {Object.entries(STRATEGY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-                <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} aria-label="Filter by lifecycle state">
-                  <option value="all">All states</option>
-                  <option value="watching">Watching</option>
-                  <option value="entry_ready">Entry ready</option>
-                  <option value="invalidated">Invalidated</option>
-                  <option value="expired">Expired</option>
-                </select>
-                <label className="flex items-center gap-1 text-[11px]"><input type="checkbox" checked={pinnedOnly} onChange={(event) => setPinnedOnly(event.target.checked)} className="accent-[var(--amber)]" /> Pinned</label>
-                <label className="flex items-center gap-1 text-[11px]"><input type="checkbox" checked={includeDismissed} onChange={(event) => setIncludeDismissed(event.target.checked)} className="accent-[var(--amber)]" /> Dismissed</label>
-                <label className="flex items-center gap-1 text-[11px]"><input type="checkbox" checked={historyView} onChange={(event) => setHistoryView(event.target.checked)} className="accent-[var(--amber)]" /> History</label>
-                <button type="button" className="term-btn ml-auto" onClick={() => void refresh()}>REFRESH</button>
-              </div>
-
-              {opportunitiesQuery.isLoading ? (
-                <div className="p-3 dim text-[11px]">Loading opportunities…</div>
-              ) : opportunitiesQuery.error ? (
-                <div className="p-3 down text-[11px]">{(opportunitiesQuery.error as Error).message}</div>
-              ) : empty ? (
-                <div className="p-3">
-                  <div className="amber text-[12px]">{empty.title}</div>
-                  <div className="dim text-[11px] mt-1">{empty.detail}</div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Opportunities">
-                  <table className="data-table min-w-[980px]">
-                    <thead>
-                      <tr>
-                        <th>Symbol</th><th>Recipe</th><th>Strategy</th><th>State</th><th>Health</th><th>Expiry</th><th>Max loss</th><th>Legs</th><th>Updated</th><th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((opportunity) => (
-                        <tr key={opportunity.id} className={opportunity.archived ? "opacity-50" : ""}>
-                          <td>
-                            <button type="button" className="font-bold amber hover:underline" onClick={() => setSelectedId(opportunity.id)}>
-                              {opportunity.symbol}
-                            </button>
-                            {opportunity.pinned && <span className="ml-1 amber" title="Pinned">★</span>}
-                            {opportunity.dismissed && <span className="ml-1 dim" title="Dismissed">muted</span>}
-                          </td>
-                          <td className="dim">{opportunity.recipeId}</td>
-                          <td>{STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}</td>
-                          <td><StateBadge state={opportunity.state} /></td>
-                          <td><HealthBadge health={opportunity.currentHealth} /></td>
-                          <td>{opportunity.expiry}</td>
-                          <td>{formatUsd(opportunity.risk.maxLossUsd)}</td>
-                          <td className="dim break-all max-w-[260px]">{legsSummary(opportunity)}</td>
-                          <td>{formatDateTime(opportunity.lastCheckedAt ?? opportunity.updatedAt)}</td>
-                          <td>
-                            <div className="flex gap-1">
-                              <button type="button" className="term-btn" onClick={() => pin.mutate({ id: opportunity.id, pinned: !opportunity.pinned })}>
-                                {opportunity.pinned ? "UNPIN" : "PIN"}
-                              </button>
-                              <button type="button" className="term-btn" onClick={() => dismiss.mutate(opportunity.id)} disabled={opportunity.dismissed}>
-                                {opportunity.dismissed ? "DISMISSED" : "DISMISS"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+            <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(340px,430px)] xl:grid-cols-[minmax(0,1fr)_minmax(380px,520px)]">
+              <section
+                className={`scanner-panel ${selectedId ? "hidden lg:block" : ""}`}
+                aria-label="Opportunity list"
+              >
+                <div className="space-y-2 border-b border-[var(--border)] p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="scanner-tabs" role="group" aria-label="Trade horizon">
+                      {HORIZONS.map((entry) => (
+                        <button
+                          key={entry}
+                          type="button"
+                          aria-pressed={horizon === entry}
+                          className="scanner-tab"
+                          data-active={horizon === entry}
+                          onClick={() => selectHorizon(entry)}
+                        >
+                          {entry.toUpperCase()}
+                        </button>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
+                    </div>
+                    <span className="text-[10px] dim">
+                      {filtered.length} shown · {activeCount} active
+                    </span>
+                    {opportunitiesQuery.isFetching && <span className="text-[10px] dim">updating…</span>}
+                    <button
+                      type="button"
+                      className="term-btn ml-auto"
+                      onClick={() => void refresh()}
+                      disabled={opportunitiesQuery.isFetching}
+                    >
+                      REFRESH
+                    </button>
+                  </div>
 
-            {selectedId && (
-              <OpportunityDetail
-                opportunityId={selectedId}
-                onPin={(opportunity, pinned) => pin.mutate({ id: opportunity.id, pinned })}
-                onDismiss={(opportunity) => dismiss.mutate(opportunity.id)}
-              />
-            )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search symbol, strategy or recipe"
+                      aria-label="Search opportunities"
+                      className="min-w-[180px] flex-1"
+                    />
+                    <select
+                      value={strategy}
+                      onChange={(event) => setStrategy(event.target.value)}
+                      aria-label="Filter by strategy"
+                    >
+                      <option value="all">All strategies</option>
+                      {Object.entries(STRATEGY_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={stateFilter}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setStateFilter(value);
+                        if (TERMINAL_STATES.has(value)) setHistoryView(true);
+                      }}
+                      aria-label="Filter by lifecycle state"
+                    >
+                      <option value="all">All states</option>
+                      <option value="watching">Watching</option>
+                      <option value="entry_ready">Entry ready</option>
+                      <option value="invalidated">Invalidated</option>
+                      <option value="expired">Expired</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="scanner-chip"
+                      data-active={pinnedOnly}
+                      aria-pressed={pinnedOnly}
+                      onClick={() => setPinnedOnly((value) => !value)}
+                    >
+                      ★ Pinned
+                    </button>
+                    <button
+                      type="button"
+                      className="scanner-chip"
+                      data-active={includeDismissed}
+                      aria-pressed={includeDismissed}
+                      onClick={() => setIncludeDismissed((value) => !value)}
+                    >
+                      Dismissed
+                    </button>
+                    <button
+                      type="button"
+                      className="scanner-chip"
+                      data-active={historyView}
+                      aria-pressed={historyView}
+                      onClick={() => {
+                        const next = !historyView;
+                        setHistoryView(next);
+                        if (!next && TERMINAL_STATES.has(stateFilter)) setStateFilter("all");
+                      }}
+                    >
+                      History
+                    </button>
+                    {filtersActive && (
+                      <button
+                        type="button"
+                        className="ml-auto text-[10px] dim underline hover:text-[var(--amber)]"
+                        onClick={clearFilters}
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {opportunitiesQuery.isLoading ? (
+                  <div className="p-6 text-center text-[11px] dim">Loading setups…</div>
+                ) : opportunitiesQuery.error ? (
+                  <div role="alert" className="p-4 text-[11px] down">
+                    {(opportunitiesQuery.error as Error).message}
+                  </div>
+                ) : emptyNotice ? (
+                  <div className="p-6 text-center">
+                    <div className="amber text-[12px] font-bold">{emptyNotice.title}</div>
+                    <div className="mx-auto mt-1 max-w-lg text-[11px] dim">{emptyNotice.detail}</div>
+                    {emptyNotice.action && (
+                      <button type="button" className="term-btn mt-3" onClick={emptyNotice.action.run}>
+                        {emptyNotice.action.label.toUpperCase()}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 p-2">
+                    {filtered.map((opportunity) => {
+                      const selected = selectedId === opportunity.id;
+                      return (
+                        <button
+                          key={opportunity.id}
+                          type="button"
+                          className="scanner-card"
+                          data-selected={selected}
+                          aria-current={selected ? "true" : undefined}
+                          onClick={() => setSelectedId(opportunity.id)}
+                        >
+                          <span className="flex items-start justify-between gap-3">
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-1.5">
+                                <span className="amber text-[14px] font-bold">{opportunity.symbol}</span>
+                                {opportunity.pinned && (
+                                  <span className="amber text-[10px]" title="Pinned">
+                                    ★
+                                  </span>
+                                )}
+                                <StateBadge state={opportunity.state} />
+                                {opportunity.currentHealth !== "current" && (
+                                  <HealthBadge health={opportunity.currentHealth} />
+                                )}
+                                {opportunity.dismissed && (
+                                  <span className="scanner-badge scanner-badge--muted">Muted</span>
+                                )}
+                                {opportunity.archived && (
+                                  <span className="scanner-badge scanner-badge--muted">Archived</span>
+                                )}
+                              </span>
+                              <span className="mt-1 block truncate text-[11px] dim">
+                                <span className={directionClass(opportunity.direction)}>
+                                  {opportunity.direction.toUpperCase()}
+                                </span>
+                                {" · "}
+                                {STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}
+                                {" · "}
+                                {recipeNames.get(opportunity.recipeId) ?? opportunity.recipeId}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-right">
+                              <span className="block text-[12px]">{formatUsd(opportunity.risk.maxLossUsd)}</span>
+                              <span className="block text-[9px] uppercase tracking-wide dim">Max loss</span>
+                            </span>
+                          </span>
+                          <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] dim">
+                            <span>Exp {opportunity.expiry}</span>
+                            <span>Updated {formatDateTime(opportunity.lastCheckedAt ?? opportunity.updatedAt)}</span>
+                            <span>
+                              {opportunity.legs.length} leg{opportunity.legs.length === 1 ? "" : "s"}
+                            </span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[10px] dim">
+                            {legsSummary(opportunity)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <aside className={`${selectedId ? "block" : "hidden lg:block"} lg:sticky lg:top-[52px]`}>
+                {selectedId ? (
+                  <div className="lg:max-h-[calc(100vh-64px)] lg:overflow-y-auto">
+                    <OpportunityDetail
+                      key={selectedId}
+                      opportunityId={selectedId}
+                      onPin={(opportunity, pinned) => pin.mutate({ id: opportunity.id, pinned })}
+                      onDismiss={(opportunity) => dismiss.mutate(opportunity.id)}
+                      onClose={() => setSelectedId(null)}
+                    />
+                  </div>
+                ) : (
+                  <div className="scanner-panel p-6 text-center">
+                    <div className="amber text-[12px] font-bold">No setup selected</div>
+                    <div className="mx-auto mt-1 max-w-xs text-[11px] dim">
+                      Choose a setup to inspect its legs, risk, frozen conditions, AI assessment, and lifecycle
+                      history.
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </div>
           </>
         )}
       </main>
