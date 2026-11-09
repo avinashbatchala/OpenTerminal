@@ -44,7 +44,12 @@ export class ScannerScheduler {
       if (sessionState(now).state !== "open") return;
       const last = this.store.lastCompletedRun();
       const next = nextScheduledAt(config, last, now);
-      if (next && Date.parse(next) > now.getTime()) return;
+      if (next && Date.parse(next) > now.getTime()) {
+        // Between discovery scans, run the cheap quote pass so entries,
+        // misses and invalidations are noticed within the tick cadence.
+        await this.engine.runMonitoring(now);
+        return;
+      }
       if (last && this.gapRecordedForRun !== last.id) {
         const interval = config.scanIntervalMinutes * 60_000;
         const expected = Date.parse(last.startedAt) + interval;
@@ -58,6 +63,10 @@ export class ScannerScheduler {
         }
       }
       await this.engine.runScan("scheduled");
+    } catch (error) {
+      console.warn(
+        `[scanner] scheduler tick failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       this.running = false;
     }

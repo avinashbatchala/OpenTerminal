@@ -55,15 +55,21 @@ and lifecycle are unaffected.
   deadlines are the regular-session open on expiry day.
 - A database lease prevents overlapping runs, including across multiple API
   instances sharing the database.
+- Between discovery scans, the scheduler runs a cheap quote-only monitoring pass
+  each tick. It can invalidate a setup, mark an entry as missed, or confirm entry
+  only when the underlying is inside the chase band and the option legs verify;
+  it never runs discovery. Full scans keep the configured
+  `scanIntervalMinutes` cadence.
 - A run captures its configuration revision before fetching. If configuration,
   watchlist revision, or the public/Schwab data-source toggle changes before
   commit, the run is marked obsolete and its collected results are discarded.
-- Restart recovery marks in-flight runs interrupted, records a monitoring gap,
-  expires passed deadlines without inventing intermediate checks, and lets the
-  next current-session run proceed. It does not replay paid scans. A gap is also
-  recorded once when the scheduler resumes after a missed cycle (process sleep,
-  laptop suspend, or downtime) and the last completed run is older than one
-  scan interval.
+- Restart recovery marks in-flight runs interrupted, releases the dead process's
+  lease immediately (instead of waiting for the lease TTL), records a monitoring
+  gap, expires passed deadlines without inventing intermediate checks, and lets
+  the next current-session run proceed. It does not replay paid scans. A gap is
+  also recorded once when the scheduler resumes after a missed cycle (process
+  sleep, laptop suspend, or downtime) and the last completed run is older than
+  one scan interval.
 
 ## Watchlist synchronization
 
@@ -81,7 +87,11 @@ Proposed policies currently implemented:
   signal-bar time + exact contracts/legs.
 - Quote-only changes do not create a new identity or a new alert. Alternative
   strikes within the same signal share a mute key and inherit dismissal.
-- Invalidated and expired states are terminal. A genuinely new signal (new
+- Invalidated and expired states are terminal. So is `missed`: the underlying
+  left the configured chase band before entry was confirmed, so the setup is
+  closed rather than left waiting for a trigger that already passed. Terminal
+  price transitions are evaluated before the option-chain fetch and never wait
+  on option quotes. A genuinely new signal (new
   signal-bar time) creates a new setup; a recent terminal setup in the same
   family is linked as `predecessor_id`.
 - Dismissal mutes future notifications for that setup and its contract

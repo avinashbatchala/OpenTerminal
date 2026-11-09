@@ -74,6 +74,8 @@ unconfigured settings, a closed market, and unavailable providers/AI.
 - Entry ready: the same setup meets its explicit entry conditions on verified
   data. This does not indicate a trade or fill.
 - Invalidated: an explicit invalidation rule was met.
+- Missed: the underlying left the configured chase band before entry was
+  confirmed, so the setup is terminal and cannot later become entry-ready.
 - Expired: its time/session/contract deadline passed.
 
 Track data health separately: current, stale, or unable to assess. Missing data

@@ -1,6 +1,6 @@
 export type Horizon = "intraday" | "swing";
 export type Direction = "bullish" | "bearish" | "neutral";
-export type OpportunityState = "watching" | "entry_ready" | "invalidated" | "expired";
+export type OpportunityState = "watching" | "entry_ready" | "invalidated" | "expired" | "missed";
 export type DataHealth = "current" | "stale" | "unable";
 export type RecipeId =
   | "TREND-PULLBACK"

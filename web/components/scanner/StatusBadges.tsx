@@ -3,6 +3,7 @@ const STATE_STYLES: Record<string, { label: string; tone: string }> = {
   entry_ready: { label: "Entry ready", tone: "scanner-badge--up" },
   invalidated: { label: "Invalidated", tone: "scanner-badge--down" },
   expired: { label: "Expired", tone: "scanner-badge--muted" },
+  missed: { label: "Missed", tone: "scanner-badge--amber" },
 };
 
 export function StateBadge({ state }: { state: string }) {
