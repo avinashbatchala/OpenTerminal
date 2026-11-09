@@ -11,11 +11,13 @@ export default function ScannerOverlay({
   onClose,
   children,
   wide = false,
+  variant = "modal",
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
+  variant?: "modal" | "side";
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocus = useRef<HTMLElement | null>(null);
@@ -57,7 +59,7 @@ export default function ScannerOverlay({
 
   return createPortal(
     <div
-      className="scanner-overlay"
+      className={`scanner-overlay ${variant === "side" ? "is-side" : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}

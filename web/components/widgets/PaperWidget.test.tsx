@@ -193,7 +193,7 @@ describe("paper trading widget", () => {
 
     await user.click(await screen.findByRole("button", { name: /AAPL/ }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Paper trade" });
+    const dialog = await screen.findByRole("dialog", { name: "Trade detail" });
     expect(dialog).toBeInTheDocument();
     expect(await screen.findByText("AAPL261120C00100000")).toBeInTheDocument();
     expect(screen.getByText(/trade opened/i)).toBeInTheDocument();

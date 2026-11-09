@@ -46,6 +46,11 @@ function premiumLabel(trade: ExecutionTrade): string {
   return entry >= 0 ? `Debit ${formatUsd(entry)}` : `Credit ${formatUsd(-entry)}`;
 }
 
+function statusLabel(status: string): string {
+  const label = status.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function Field({
   label,
   hint,
@@ -283,7 +288,7 @@ function TradeDetail({
                 : "scanner-badge--amber"
           }`}
         >
-          {trade.status.replaceAll("_", " ")}
+          {statusLabel(trade.status)}
         </span>
       </div>
 
@@ -333,7 +338,7 @@ function TradeDetail({
 
       <h3 className="paper-section-title">Fills</h3>
       <div className="paper-table-wrap" tabIndex={0} role="region" aria-label="Paper fills">
-        <table className="data-table min-w-[620px]">
+        <table className="data-table min-w-[560px]">
           <thead>
             <tr>
               <th scope="col">Side</th>
@@ -349,14 +354,14 @@ function TradeDetail({
           <tbody>
             {detail.fills.map((fill) => (
               <tr key={fill.fillId}>
-                <td className={fill.side === "buy" ? "up" : "down"}>{fill.side.charAt(0).toUpperCase() + fill.side.slice(1)}</td>
-                <td>{fill.contractSymbol}</td>
-                <td>{fill.quantity}</td>
-                <td>{formatUsd(fill.price)}</td>
-                <td>{formatUsd(fill.referenceMid)}</td>
-                <td>{formatUsd(fill.slippageUsd)}</td>
-                <td>{formatUsd(fill.feesUsd)}</td>
-                <td>{formatDateTime(fill.filledAt)}</td>
+                <td data-label="Side" className={fill.side === "buy" ? "up" : "down"}>{fill.side.charAt(0).toUpperCase() + fill.side.slice(1)}</td>
+                <td data-label="Contract">{fill.contractSymbol}</td>
+                <td data-label="Qty">{fill.quantity}</td>
+                <td data-label="Price">{formatUsd(fill.price)}</td>
+                <td data-label="Mid">{formatUsd(fill.referenceMid)}</td>
+                <td data-label="Slip">{formatUsd(fill.slippageUsd)}</td>
+                <td data-label="Fees">{formatUsd(fill.feesUsd)}</td>
+                <td data-label="Time">{formatDateTime(fill.filledAt)}</td>
               </tr>
             ))}
             {detail.fills.length === 0 && (
@@ -393,7 +398,7 @@ function TradeDetail({
           </button>
         )}
         <button type="button" className="term-btn" onClick={onClose}>
-          Close detail
+          Done
         </button>
       </div>
     </div>
@@ -598,7 +603,7 @@ export default function PaperWidget() {
                           trade.status === "open" ? "scanner-badge--up" : "scanner-badge--amber"
                         }`}
                       >
-                        {trade.status.replaceAll("_", " ")}
+                        {statusLabel(trade.status)}
                       </span>
                       <span className="dim text-[10px]">
                         {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
@@ -643,7 +648,7 @@ export default function PaperWidget() {
                       trade.status === "closed" ? "scanner-badge--muted" : "scanner-badge--amber"
                     }`}
                   >
-                    {trade.status}
+                    {statusLabel(trade.status)}
                   </span>
                   <span className="dim text-[10px]">
                     {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
@@ -671,7 +676,7 @@ export default function PaperWidget() {
       )}
 
       {selectedId && (
-        <ScannerOverlay title="Paper trade" onClose={() => setSelectedId(null)}>
+        <ScannerOverlay title="Trade detail" variant="side" onClose={() => setSelectedId(null)}>
           {detailQuery.isLoading ? (
             <p className="dim text-[11px]">Loading trade…</p>
           ) : detailQuery.error ? (
