@@ -149,7 +149,7 @@ export default function SymbolPage() {
               {tab === "options" ? (
                 <OptionsWidget widget={activeWidget} />
               ) : tab === "news" ? (
-                <NewsWidget widget={activeWidget} />
+                <NewsWidget widget={activeWidget} pageSize={4} />
               ) : (
                 <InsiderWidget widget={activeWidget} />
               )}

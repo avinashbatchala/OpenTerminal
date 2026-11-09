@@ -129,7 +129,7 @@ export default function MarketsPage() {
             aria-label={TABS.find((item) => item.id === tab)?.label}
           >
             {tab === "news" ? (
-              <NewsWidget widget={newsWidget} />
+              <NewsWidget widget={newsWidget} pageSize={4} />
             ) : (
               <QuoteWidget widget={quoteWidget} />
             )}

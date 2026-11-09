@@ -2322,3 +2322,55 @@ table.data-table tbody tr:focus-within .watchlist-remove,
     min-height: 340px;
   }
 }
+
+.news-widget {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.news-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.news-item {
+  display: block;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--edge-line);
+  color: var(--edge-text);
+  text-decoration: none;
+}
+
+.news-item:hover {
+  background: var(--edge-surface-2);
+}
+
+.news-item-title {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.news-item-meta {
+  margin-top: 2px;
+  color: var(--edge-muted);
+  font-size: 11px;
+}
+
+.news-pager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--edge-line);
+}
+
+.news-pager .term-btn {
+  min-height: 28px;
+}
