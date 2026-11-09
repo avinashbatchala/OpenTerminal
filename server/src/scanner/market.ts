@@ -72,7 +72,11 @@ export type ScannerMarketData = {
   quote(symbol: string): Promise<NormalizedQuote>;
   history(symbol: string, horizon: Horizon): Promise<NormalizedHistory>;
   expirations(symbol: string): Promise<string[]>;
-  chain(symbol: string, expiry: string): Promise<NormalizedChain>;
+  /**
+   * `fresh` bypasses the route's short chain cache. Live marks use it so a
+   * polling fallback can see quotes newer than the 60-second scanner cache.
+   */
+  chain(symbol: string, expiry: string, options?: { fresh?: boolean }): Promise<NormalizedChain>;
   earnings(symbols: string[]): Promise<EarningsMap>;
 };
 
@@ -308,9 +312,10 @@ export function createHttpScannerMarketData(): ScannerMarketData {
         ? raw.expirationDates.filter((entry: unknown): entry is string => typeof entry === "string")
         : [];
     },
-    async chain(symbol, expiry) {
+    async chain(symbol, expiry, options) {
+      const fresh = options?.fresh ? "&fresh=1" : "";
       const raw = await getJson<any>(
-        `/options/${encodeURIComponent(symbol)}?expiry=${encodeURIComponent(expiry)}&requireQuotes=1`
+        `/options/${encodeURIComponent(symbol)}?expiry=${encodeURIComponent(expiry)}&requireQuotes=1${fresh}`
       );
       return normalizeChain(symbol, expiry, raw, new Date());
     },

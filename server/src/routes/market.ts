@@ -483,50 +483,61 @@ marketRouter.get("/options/:symbol", async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
   const expiry = req.query.expiry ? String(req.query.expiry) : undefined;
   const requireQuotes = req.query.requireQuotes === "1";
+  // Live execution marks ask for fresh quotes; everything else keeps the
+  // short shared cache so the scanner and UI do not repeat provider fan-out.
+  // Only the engine's loopback request may bypass the cache: this route is
+  // keyless, and `fresh` should not become a public cache-buster.
+  const loopback =
+    req.ip === "127.0.0.1" || req.ip === "::1" || req.ip === "::ffff:127.0.0.1";
+  const fresh = req.query.fresh === "1" && loopback;
   try {
-    const data = await cached(
-      `options:${symbol}:${expiry ?? "front"}:${requireQuotes ? "quoted" : "any"}`,
-      60_000,
-      () => {
-        const attempts: Array<[string, () => Promise<any>]> = [];
-        if (schwabSourceEnabled()) {
-          attempts.push([
-            "schwab",
-            () => requireChain("schwab", () => schwab.optionChain(symbol, expiry)),
-          ]);
-        }
-        attempts.push(
-          ["nasdaq", () => requireChain("nasdaq", () => nasdaq.optionChain(symbol, expiry))],
-          [
-            "yahoo",
-            () =>
-              requireChain("yahoo", async () => {
-                const requested = expiry ? Math.floor(Date.parse(`${expiry}T00:00:00Z`) / 1000) : undefined;
-                const y = await yahoo.options(symbol, requested);
-                return {
-                  symbol: y.symbol,
-                  underlyingPrice: y.underlyingPrice,
-                  expirationDates: y.expirationDates.map((d: number) => new Date(d * 1000).toISOString().slice(0, 10)),
-                  selectedDate: y.selectedDate ? new Date(y.selectedDate * 1000).toISOString().slice(0, 10) : null,
-                  calls: y.calls,
-                  puts: y.puts,
-                };
-              }),
-          ]
-        );
-        const checked = attempts.map(
-          ([label, fn]) =>
-            [
-              label,
-              async () => {
-                const chain = await fn();
-                return requireQuotes ? requireQuoteTimestamps(label, chain) : chain;
-              },
-            ] as [string, () => Promise<any>]
-        );
-        return withFallback(checked);
+    const load = async () => {
+      const attempts: Array<[string, () => Promise<any>]> = [];
+      if (schwabSourceEnabled()) {
+        attempts.push([
+          "schwab",
+          () => requireChain("schwab", () => schwab.optionChain(symbol, expiry)),
+        ]);
       }
-    );
+      attempts.push(
+        ["nasdaq", () => requireChain("nasdaq", () => nasdaq.optionChain(symbol, expiry))],
+        [
+          "yahoo",
+          () =>
+            requireChain("yahoo", async () => {
+              const requested = expiry ? Math.floor(Date.parse(`${expiry}T00:00:00Z`) / 1000) : undefined;
+              const y = await yahoo.options(symbol, requested);
+              return {
+                symbol: y.symbol,
+                underlyingPrice: y.underlyingPrice,
+                expirationDates: y.expirationDates.map((d: number) => new Date(d * 1000).toISOString().slice(0, 10)),
+                selectedDate: y.selectedDate ? new Date(y.selectedDate * 1000).toISOString().slice(0, 10) : null,
+                calls: y.calls,
+                puts: y.puts,
+              };
+            }),
+        ]
+      );
+      const checked = attempts.map(
+        ([label, fn]) =>
+          [
+            label,
+            async () => {
+              const chain = await fn();
+              return requireQuotes ? requireQuoteTimestamps(label, chain) : chain;
+            },
+          ] as [string, () => Promise<any>]
+      );
+      return withFallback(checked);
+    };
+
+    const data = fresh
+      ? await load()
+      : await cached(
+          `options:${symbol}:${expiry ?? "front"}:${requireQuotes ? "quoted" : "any"}`,
+          60_000,
+          load
+        );
     res.json(data);
   } catch (err) {
     fail(req, res, err);

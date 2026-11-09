@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet } from "../../lib/api";
@@ -169,6 +169,7 @@ beforeEach(() => {
       return { opportunity: selected, checks: [], events: [], assessment: null };
     }
     if (path === "/api/scanner/notifications?unread=true") return [];
+    if (path === "/api/execution/trades?limit=200") return [];
     throw new Error(`Unexpected request: ${path}`);
   });
 });
@@ -212,6 +213,7 @@ describe("opportunities widget", () => {
       }
       if (path.startsWith("/api/scanner/opportunities?")) return [];
       if (path === "/api/scanner/notifications?unread=true") return [];
+      if (path === "/api/execution/trades?limit=200") return [];
       throw new Error(`Unexpected request: ${path}`);
     });
 
@@ -219,5 +221,28 @@ describe("opportunities widget", () => {
 
     expect(await screen.findByText("Scanner is paused")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /scanner settings/i })).toBeInTheDocument();
+  });
+
+  it("marks a setup with a paper trade and offers a close action", async () => {
+    apiGetMock.mockImplementation(async (path: string) => {
+      if (path === "/api/scanner/status") return status;
+      if (path.startsWith("/api/scanner/opportunities?")) return [intraday];
+      if (path === "/api/scanner/notifications?unread=true") return [];
+      if (path === "/api/execution/trades?limit=200") {
+        return [{ id: "paper-1", opportunityId: intraday.id, status: "open" }];
+      }
+      if (path.startsWith("/api/scanner/opportunities/")) {
+        return { opportunity: intraday, checks: [], events: [], assessment: null };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    renderWidget();
+
+    expect(await screen.findByText("PAPER")).toBeInTheDocument();
+    const row = screen.getByRole("button", { name: /AAPL/ });
+
+    fireEvent.click(row);
+    expect(await screen.findByRole("button", { name: /close paper/i })).toBeInTheDocument();
   });
 });

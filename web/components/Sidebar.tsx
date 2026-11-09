@@ -8,6 +8,7 @@ const ITEMS: Array<{ type: WidgetType; label: string; key: string }> = [
   { type: "news", label: "NEWS", key: "⌥3" },
   { type: "screener", label: "SCREENER", key: "⌥4" },
   { type: "opportunities", label: "OPPORTUNITIES", key: "⌥9" },
+  { type: "paper", label: "PAPER", key: "⌥0" },
   { type: "heatmap", label: "HEATMAP", key: "⌥5" },
   { type: "crypto", label: "CRYPTO", key: "⌥6" },
   { type: "options", label: "OPTIONS", key: "⌥7" },
@@ -20,14 +21,34 @@ const ITEMS: Array<{ type: WidgetType; label: string; key: string }> = [
   { type: "recap", label: "MARKET RECAP", key: "" },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  mobileOpen = false,
+  onClose,
+}: {
+  mobileOpen?: boolean;
+  onClose?: () => void;
+} = {}) {
   const addWidget = useTerminal((s) => s.addWidget);
   const resetWorkspace = useTerminal((s) => s.resetWorkspace);
 
   return (
-    <nav className="w-32 bg-[var(--panel)] border-r border-[var(--border)] flex flex-col shrink-0">
-      <div className="dim px-2 py-1 text-[10px] uppercase tracking-wider border-b border-[var(--border)]">
-        Add widget
+    <nav
+      className={`sidebar w-32 bg-[var(--panel)] border-r border-[var(--border)] flex flex-col shrink-0 ${
+        mobileOpen ? "is-mobile-open" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-2 py-1">
+        <span className="dim text-[10px] uppercase tracking-wider">Add widget</span>
+        {onClose && (
+          <button
+            type="button"
+            className="sidebar-close"
+            onClick={onClose}
+            aria-label="Close widget panel"
+          >
+            ✕
+          </button>
+        )}
       </div>
       {ITEMS.map((item) => (
         <button

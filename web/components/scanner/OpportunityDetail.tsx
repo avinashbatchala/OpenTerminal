@@ -37,6 +37,11 @@ type Props = {
   onPin: (opportunity: Opportunity, pinned: boolean) => void;
   onDismiss: (opportunity: Opportunity) => void;
   onClose?: () => void;
+  paperTrade?: { id: string; status: string } | null;
+  paperPending?: boolean;
+  paperError?: string | null;
+  onPaperTrade?: () => void;
+  onClosePaper?: () => void;
 };
 
 function Section({
@@ -88,7 +93,17 @@ function InsightList({
   );
 }
 
-export default function OpportunityDetail({ opportunityId, onPin, onDismiss, onClose }: Props) {
+export default function OpportunityDetail({
+  opportunityId,
+  onPin,
+  onDismiss,
+  onClose,
+  paperTrade = null,
+  paperPending = false,
+  paperError = null,
+  onPaperTrade,
+  onClosePaper,
+}: Props) {
   const { data, error, isLoading } = useQuery({
     queryKey: ["scanner", "opportunity", opportunityId],
     queryFn: () =>
@@ -130,6 +145,30 @@ export default function OpportunityDetail({ opportunityId, onPin, onDismiss, onC
           </div>
         </div>
         <div className="flex shrink-0 gap-1">
+          {onPaperTrade && !paperTrade && (
+            <button
+              type="button"
+              className="term-btn term-btn--primary"
+              onClick={onPaperTrade}
+              disabled={paperPending}
+            >
+              {paperPending ? "PAPERING…" : "PAPER"}
+            </button>
+          )}
+          {paperTrade?.status === "open" && onClosePaper && (
+            <button type="button" className="term-btn" onClick={onClosePaper} disabled={paperPending}>
+              {paperPending ? "CLOSING…" : "CLOSE PAPER"}
+            </button>
+          )}
+          {paperTrade && paperTrade.status !== "open" && (
+            <span
+              className={`scanner-badge ${
+                paperTrade.status === "closed" ? "scanner-badge--muted" : "scanner-badge--amber"
+              }`}
+            >
+              PAPER {paperTrade.status.replaceAll("_", " ").toUpperCase()}
+            </span>
+          )}
           <button
             type="button"
             className="term-btn"
@@ -161,6 +200,7 @@ export default function OpportunityDetail({ opportunityId, onPin, onDismiss, onC
       </header>
 
       <div className="detail-body">
+        {paperError && <div className="paper-error">{paperError}</div>}
         <div className="action-card" data-tone={action.tone}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
