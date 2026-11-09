@@ -159,6 +159,19 @@ describe("Schwab market data mapping", () => {
       { symbol: "SPY", name: "SPDR S&P 500 ETF", exchange: "NYSE Arca", type: "ETF" },
     ]);
   });
+
+  it("maps the instruments wrapper instead of inventing an 'instruments' symbol", () => {
+    const results = mapSchwabSearch({
+      instruments: [
+        { symbol: "MSFT", description: "Microsoft Corporation", exchange: "Q", assetType: "EQUITY" },
+        { symbol: "NVDA", description: "NVIDIA Corporation", exchange: "Q", assetType: "EQUITY" },
+      ],
+    });
+    expect(results).toEqual([
+      { symbol: "MSFT", name: "Microsoft Corporation", exchange: "NASDAQ", type: "EQUITY" },
+      { symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", type: "EQUITY" },
+    ]);
+  });
 });
 
 describe("Schwab streamer frame parsing", () => {

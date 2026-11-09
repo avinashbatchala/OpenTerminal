@@ -55,7 +55,7 @@ function MacroBody({
 }) {
   return (
     <div>
-      <div className="px-2 py-1 dim text-[10px] uppercase flex justify-between">
+      <div className="px-2 py-1 dim text-[10px] flex justify-between">
         <span>{region === "eu" ? "Euro Area AAA Yield Curve" : "US Treasury Yield Curve"}</span>
         {region === "us" && data.vix !== null && (
           <span className="cursor-pointer" onClick={() => setActiveSymbol("^VIX")}>
@@ -78,13 +78,13 @@ function MacroBody({
       <div className="h-24 px-1">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data.yields} margin={{ top: 4, right: 12, bottom: 0, left: -22 }}>
-            <XAxis dataKey="tenor" stroke="#8e8e93" fontSize={9} />
-            <YAxis stroke="#8e8e93" fontSize={9} domain={["auto", "auto"]} />
+            <XAxis dataKey="tenor" stroke="var(--edge-muted)" fontSize={9} />
+            <YAxis stroke="var(--edge-muted)" fontSize={9} domain={["auto", "auto"]} />
             <Tooltip
-              contentStyle={{ background: "#1c1c1e", border: "1px solid #3a3a3c", fontSize: 10 }}
-              labelStyle={{ color: "#8e8e93" }}
+              contentStyle={{ background: "var(--edge-surface)", border: "1px solid var(--edge-line)", fontSize: 10 }}
+              labelStyle={{ color: "var(--edge-muted)" }}
             />
-            <Line type="monotone" dataKey="value" stroke="#ff9f0a" strokeWidth={1.5} dot={{ r: 2 }} />
+            <Line type="monotone" dataKey="value" stroke="var(--edge-accent)" strokeWidth={1.5} dot={{ r: 2 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>

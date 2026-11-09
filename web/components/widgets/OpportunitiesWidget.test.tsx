@@ -191,13 +191,13 @@ describe("opportunities widget", () => {
     fireEvent.click(intradayRow);
 
     expect(
-      await screen.findByRole("heading", { name: /AAPL · Long call · INTRADAY/ })
+      await screen.findByRole("heading", { name: /AAPL, Long call, intraday/ })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /swing/i }));
 
     await waitFor(() => {
-      expect(screen.queryByRole("heading", { name: /AAPL · Long call/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /AAPL, Long call/ })).not.toBeInTheDocument();
     });
     expect(await screen.findByText("MSFT")).toBeInTheDocument();
   });
@@ -239,7 +239,7 @@ describe("opportunities widget", () => {
 
     renderWidget();
 
-    expect(await screen.findByText("PAPER")).toBeInTheDocument();
+    expect(await screen.findByText("Paper")).toBeInTheDocument();
     const row = screen.getByRole("button", { name: /AAPL/ });
 
     fireEvent.click(row);

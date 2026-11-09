@@ -14,7 +14,7 @@ type GlobalStats = { totalMarketCap: number; btcDominance: number; ethDominance:
 
 // Feeds can report a null/NaN price for newly-listed or delisted assets.
 function fmtPrice(p: number | null): string {
-  if (p === null || !isFinite(p)) return "—";
+  if (p === null || !isFinite(p)) return "-";
   return p >= 1 ? fmt(p) : p.toPrecision(4);
 }
 
@@ -29,7 +29,7 @@ function Sparkline({ data }: { data: number[] }) {
     .join(" ");
   const upTrend = data[data.length - 1] >= data[0];
   return (
-    <svg width={w} height={h}>
+    <svg width={w} height={h} aria-hidden="true">
       <polyline points={pts} fill="none" stroke={upTrend ? "#30d158" : "#ff453a"} strokeWidth={1} />
     </svg>
   );
@@ -66,7 +66,7 @@ export default function CryptoWidget() {
         <tbody>
           {data.map((c) => (
             <tr key={c.id} onClick={() => setActiveSymbol(c.symbol)}>
-              <td className="dim">{c.rank ?? "—"}</td>
+              <td className="dim">{c.rank ?? "-"}</td>
               <td className="!text-left"><span className="font-bold">{c.symbol}</span> <span className="dim">{c.name}</span></td>
               <td><Flash value={c.price}>{fmtPrice(c.price)}</Flash></td>
               <td className={pctClass(c.changePercent24h)}>

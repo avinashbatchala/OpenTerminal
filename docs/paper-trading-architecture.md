@@ -148,19 +148,27 @@ All routes are authenticated (`x-api-key`) under `/api/execution`:
 
 ## UI (P3)
 
-- **Paper Trading widget** (dashboard, `⌥0`): equity/day P&L/realized/open
-  metrics, Positions and Closed tabs, per-trade unrealized or realized P&L,
+- **Portfolio page** (`/portfolio`): equity/day P&L/realized/open metrics,
+  Positions and History tabs, per-trade unrealized or realized P&L,
   START/PAUSE, settings, and a trade detail overlay with fills (price vs mid,
   slippage, fees), marks and lifecycle events.
+- **Symbol workbench** (`/symbol/[symbol]`): chart, quote, options/news/insider
+  tabs, the live paper position for the symbol, and the symbol's scanner setups
+  with a paper-trade action.
+- **Scanner page** (`/scanner`): the full opportunity queue with horizon/history
+  filters, detail overlay, pinned/dismissed state, and paper entry/close.
+- **Markets** (`/`): watchlist, active chart, quote, scanner preview and news.
+  **Research** (`/research`) carries the news, macro, calendar, insider,
+  screener, heatmap, crypto, recap and TV panels; **Settings** keeps data,
+  broker and assistant configuration.
 - **Settings**: automation on/off, entries/exits, profit target, stop multiple,
   time stop, spread factor, max slippage, and open/per-symbol limits via
   `PUT /api/execution/config`.
-- **Opportunities widget**: setups with a paper trade show a `PAPER` badge;
-  the detail header offers `PAPER` (entry) or `CLOSE PAPER` (exit) and surfaces
-  API errors inline.
-- Marks update live: `● LIVE` means the Schwab option stream is connected,
-  `● POLLING` means the engine is polling chains, and `○ OFFLINE` falls back to
-  the widget's 10s REST query. All numbers are simulated.
+- Setups with a paper trade show a `Paper` badge; detail and workbench actions
+  surface API errors inline.
+- Marks update live: `Live` means the Schwab option stream is connected,
+  `Polling` means the engine is polling chains, and `Offline` falls back to the
+  10s REST query. All numbers are simulated.
 
 ## Adding a live broker
 

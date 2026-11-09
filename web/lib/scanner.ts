@@ -300,7 +300,7 @@ export const STRATEGY_LABELS: Record<string, string> = {
 };
 
 export function formatUsd(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return value.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
@@ -310,9 +310,9 @@ export function formatUsd(value: number | null | undefined): string {
 }
 
 export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
+  if (!Number.isFinite(date.getTime())) return "-";
   return date.toLocaleString("en-US", {
     timeZone: "America/New_York",
     month: "short",

@@ -132,15 +132,15 @@ export default function OpportunityDetail({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <h2 className="text-[14px] font-bold amber">
-              {opportunity.symbol} · {strategy} · {opportunity.horizon.toUpperCase()}
+              {opportunity.symbol}, {strategy}, {opportunity.horizon}
             </h2>
             <StateBadge state={opportunity.state} />
             <HealthBadge health={opportunity.currentHealth} />
             {opportunity.pinned && <span className="scanner-badge scanner-badge--amber">★ Pinned</span>}
           </div>
           <div className="mt-0.5 text-[10px] dim">
-            {opportunity.recipeId} · v{opportunity.recipeVersion} · signal{" "}
-            {formatDateTime(opportunity.signal.signalBarTime)} · checked{" "}
+            {opportunity.recipeId}, v{opportunity.recipeVersion}, signal{" "}
+            {formatDateTime(opportunity.signal.signalBarTime)}, checked{" "}
             {formatDateTime(opportunity.lastCheckedAt ?? opportunity.updatedAt)}
           </div>
         </div>
@@ -152,12 +152,12 @@ export default function OpportunityDetail({
               onClick={onPaperTrade}
               disabled={paperPending}
             >
-              {paperPending ? "PAPERING…" : "PAPER"}
+              {paperPending ? "Entering…" : "Paper"}
             </button>
           )}
           {paperTrade?.status === "open" && onClosePaper && (
             <button type="button" className="term-btn" onClick={onClosePaper} disabled={paperPending}>
-              {paperPending ? "CLOSING…" : "CLOSE PAPER"}
+              {paperPending ? "Closing…" : "Close paper"}
             </button>
           )}
           {paperTrade && paperTrade.status !== "open" && (
@@ -166,7 +166,7 @@ export default function OpportunityDetail({
                 paperTrade.status === "closed" ? "scanner-badge--muted" : "scanner-badge--amber"
               }`}
             >
-              PAPER {paperTrade.status.replaceAll("_", " ").toUpperCase()}
+              Paper {paperTrade.status.replaceAll("_", " ")}
             </span>
           )}
           <button
@@ -240,7 +240,7 @@ export default function OpportunityDetail({
           ))}
         </div>
 
-        <Section title="Why it's in play" hint={`${opportunity.recipeId} · ${opportunity.recipeVersion}`}>
+        <Section title="Why it's in play" hint={`${opportunity.recipeId}, ${opportunity.recipeVersion}`}>
           <p className="detail-thesis">{opportunity.thesis}</p>
           {highlights.length > 0 && (
             <dl className="signal-grid">
@@ -272,7 +272,7 @@ export default function OpportunityDetail({
 
         <Section
           title="Trade construction"
-          hint={`${legs.length} leg${legs.length === 1 ? "" : "s"} · ${expiryLabel(opportunity.expiry)}`}
+          hint={`${legs.length} leg${legs.length === 1 ? "" : "s"}, ${expiryLabel(opportunity.expiry)}`}
         >
           <div className="trade-summary">
             <div className="trade-summary-item">
@@ -361,7 +361,7 @@ export default function OpportunityDetail({
                   {opportunity.legs.map((leg, index) => (
                     <tr key={`${leg.contractSymbol}-${leg.side}-provenance`}>
                       <td>
-                        {index + 1} · {leg.side.toUpperCase()} {leg.optionType}
+                        {index + 1}. {leg.side} {leg.optionType}
                       </td>
                       <td>{leg.multiplier}</td>
                       <td>
@@ -396,7 +396,7 @@ export default function OpportunityDetail({
             <summary className="scanner-summary">Risk assumptions &amp; slippage</summary>
             <div className="detail-disclosure-body">
               <p>
-                <span className="amber">Slippage:</span> {opportunity.risk.slippageScenario.label} — modeled
+                <span className="amber">Slippage:</span> {opportunity.risk.slippageScenario.label}, modeled
                 loss {formatUsd(opportunity.risk.slippageScenario.modeledLossUsd)}. Slippage is shown separately
                 and is not part of the risk limit.
               </p>
@@ -425,11 +425,11 @@ export default function OpportunityDetail({
               </ul>
               <p className="dim">
                 Tokens: {data.assessment.inputTokens ?? "unknown"} in /{" "}
-                {data.assessment.outputTokens ?? "unknown"} out · estimated cost{" "}
+                {data.assessment.outputTokens ?? "unknown"} out, estimated cost{" "}
                 {data.assessment.estimatedCostUsd === null
                   ? "unknown"
                   : formatUsd(data.assessment.estimatedCostUsd)}{" "}
-                · source {data.assessment.pricingSource ?? "unknown"}
+                , source {data.assessment.pricingSource ?? "unknown"}
               </p>
             </div>
           ) : (
@@ -465,7 +465,7 @@ export default function OpportunityDetail({
                       </td>
                       <td>{check.stateBefore}</td>
                       <td>{check.stateAfter}</td>
-                      <td className="dim">{check.note ?? "—"}</td>
+                      <td className="dim">{check.note ?? "-"}</td>
                     </tr>
                   ))}
                   {data.checks.length === 0 && (

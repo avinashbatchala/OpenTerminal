@@ -57,14 +57,14 @@ export default function OptionsWidget({ widget }: { widget: WidgetInstance }) {
       <table className="data-table">
         <thead>
           <tr>
-            <th colSpan={5} className="!text-center up">CALLS</th>
-            <th className="!text-center">STRIKE</th>
-            <th colSpan={5} className="!text-center down">PUTS</th>
+            <th colSpan={5} className="!text-center up">Calls</th>
+            <th className="!text-center">Strike</th>
+            <th colSpan={5} className="!text-center down">Puts</th>
           </tr>
           <tr>
-            <th>Last</th><th>Bid</th><th>Ask</th><th>Vol</th><th>OI · IV</th>
+            <th>Last</th><th>Bid</th><th>Ask</th><th>Vol</th><th>OI / IV</th>
             <th></th>
-            <th>Last</th><th>Bid</th><th>Ask</th><th>Vol</th><th>OI · IV</th>
+            <th>Last</th><th>Bid</th><th>Ask</th><th>Vol</th><th>OI / IV</th>
           </tr>
         </thead>
         <tbody>
@@ -72,20 +72,20 @@ export default function OptionsWidget({ widget }: { widget: WidgetInstance }) {
             const { call, put } = byStrike.get(strike)!;
             return (
               <tr key={strike}>
-                <td className={call?.inTheMoney ? "bg-[#102a18]" : ""}>{fmt(call?.lastPrice)}</td>
-                <td className={call?.inTheMoney ? "bg-[#102a18]" : ""}>{fmt(call?.bid)}</td>
-                <td className={call?.inTheMoney ? "bg-[#102a18]" : ""}>{fmt(call?.ask)}</td>
-                <td className={call?.inTheMoney ? "bg-[#102a18]" : ""}>{fmtBig(call?.volume)}</td>
-                <td className={call?.inTheMoney ? "bg-[#102a18]" : ""}>
-                  {fmtBig(call?.openInterest)} · {call?.impliedVolatility ? fmt(call.impliedVolatility * 100, 0) + "%" : "—"}
+                <td className={call?.inTheMoney ? "bg-[var(--edge-up-soft)]" : ""}>{fmt(call?.lastPrice)}</td>
+                <td className={call?.inTheMoney ? "bg-[var(--edge-up-soft)]" : ""}>{fmt(call?.bid)}</td>
+                <td className={call?.inTheMoney ? "bg-[var(--edge-up-soft)]" : ""}>{fmt(call?.ask)}</td>
+                <td className={call?.inTheMoney ? "bg-[var(--edge-up-soft)]" : ""}>{fmtBig(call?.volume)}</td>
+                <td className={call?.inTheMoney ? "bg-[var(--edge-up-soft)]" : ""}>
+                  {fmtBig(call?.openInterest)} / {call?.impliedVolatility ? fmt(call.impliedVolatility * 100, 0) + "%" : "-"}
                 </td>
                 <td className="!text-center font-bold amber">{fmt(strike)}</td>
-                <td className={put?.inTheMoney ? "bg-[#2a1616]" : ""}>{fmt(put?.lastPrice)}</td>
-                <td className={put?.inTheMoney ? "bg-[#2a1616]" : ""}>{fmt(put?.bid)}</td>
-                <td className={put?.inTheMoney ? "bg-[#2a1616]" : ""}>{fmt(put?.ask)}</td>
-                <td className={put?.inTheMoney ? "bg-[#2a1616]" : ""}>{fmtBig(put?.volume)}</td>
-                <td className={put?.inTheMoney ? "bg-[#2a1616]" : ""}>
-                  {fmtBig(put?.openInterest)} · {put?.impliedVolatility ? fmt(put.impliedVolatility * 100, 0) + "%" : "—"}
+                <td className={put?.inTheMoney ? "bg-[var(--edge-down-soft)]" : ""}>{fmt(put?.lastPrice)}</td>
+                <td className={put?.inTheMoney ? "bg-[var(--edge-down-soft)]" : ""}>{fmt(put?.bid)}</td>
+                <td className={put?.inTheMoney ? "bg-[var(--edge-down-soft)]" : ""}>{fmt(put?.ask)}</td>
+                <td className={put?.inTheMoney ? "bg-[var(--edge-down-soft)]" : ""}>{fmtBig(put?.volume)}</td>
+                <td className={put?.inTheMoney ? "bg-[var(--edge-down-soft)]" : ""}>
+                  {fmtBig(put?.openInterest)} / {put?.impliedVolatility ? fmt(put.impliedVolatility * 100, 0) + "%" : "-"}
                 </td>
               </tr>
             );

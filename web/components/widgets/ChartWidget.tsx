@@ -152,7 +152,7 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
   }, [candles]);
 
   // Computed once per candles/active change, shared by both the chart overlays
-  // below and the hover legend — avoids recomputing the same series twice.
+  // below and the hover legend - avoids recomputing the same series twice.
   const indicatorData = useMemo(() => {
     if (!candles || candles.length === 0) return null;
     return {
@@ -353,7 +353,7 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
       timeScale: { borderColor: "#3a3a3c", timeVisible: range === "1D" || range === "5D" },
       rightPriceScale: { borderColor: "#3a3a3c" },
       autoSize: true,
-      // Mouse-wheel is left free for page scrolling — zoom via drag, pinch, or the range buttons instead.
+      // Mouse-wheel is left free for page scrolling - zoom via drag, pinch, or the range buttons instead.
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
       handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
     });
@@ -479,7 +479,7 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
         <span className="w-2" />
         {CHART_TYPES.map((t) => (
           <button key={t} className={`term-btn ${chartType === t ? "active" : ""}`} onClick={() => setChartType(t)}>
-            {t.toUpperCase()}
+            {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
         <span className="w-2" />
@@ -494,13 +494,13 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
           data-live-price={lastLivePrice ?? ""}
           title={chartLive ? "Streaming updates" : "REST polling fallback"}
         >
-          {chartLive ? `● LIVE ${fmt(lastLivePrice)}` : "○ REST"}
+          {chartLive ? `● Live ${fmt(lastLivePrice)}` : "○ REST"}
         </span>
       </div>
       {error && <div className="p-2 down">Error: {(error as Error).message}</div>}
       <div className="relative flex-1 min-h-0">
         {legend && (
-          <div className="absolute top-1 left-2 z-10 flex flex-col gap-0.5 text-[11px] pointer-events-none bg-[rgba(10,10,10,0.7)] px-2 py-1 rounded max-w-[95%]">
+          <div className="absolute top-1 left-2 z-10 flex flex-col gap-0.5 text-[11px] pointer-events-none bg-[var(--edge-scrim)] px-2 py-1 rounded max-w-[95%]">
             <div className="flex gap-3">
               <span className="dim">O <span className="text-[var(--text)]">{fmt(legend.open)}</span></span>
               <span className="dim">H <span className="up">{fmt(legend.high)}</span></span>

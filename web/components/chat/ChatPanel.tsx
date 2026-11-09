@@ -309,7 +309,7 @@ export default function ChatPanel({ isMobile, onClose }: Props) {
             <div key={message.id} className="chat-message">
               {message.role === "user" ? (
                 <>
-                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide">
+                  <div className="flex items-center gap-2 text-[10px]">
                     <span className="amber">You</span>
                     {message.symbol && (
                       <span className="chat-symbol-pill chat-symbol-pill--muted">{message.symbol}</span>
@@ -335,7 +335,7 @@ export default function ChatPanel({ isMobile, onClose }: Props) {
                 </>
               ) : (
                 <>
-                  <div className="text-[10px] uppercase tracking-wide up">AI ›</div>
+                  <div className="text-[10px] up">AI</div>
                   <div className="mt-0.5">
                     <MarkdownMessage content={message.content} />
                   </div>

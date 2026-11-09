@@ -1,8 +1,8 @@
 <div align="center">
 
-# OpenTerminal
+# OpenEdge
 
-**A Terminal‑style workspace for the rest of us — built entirely on free, public market data.**
+**A paper-first options trading workspace built on free, public market data.**
 
 Dark. Dense. Keyboard‑driven. Zero paid API keys, zero subscriptions.
 
@@ -11,11 +11,11 @@ Dark. Dense. Keyboard‑driven. Zero paid API keys, zero subscriptions.
 [![No API Key Required](https://img.shields.io/badge/data-no%20API%20key%20required-brightgreen)](#data-sources)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-ff69b4.svg)](#contributing)
 
-<a href="https://trendshift.io/repositories/215916?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-215916" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/215916/daily?language=TypeScript" alt="ErTasselli%2FOpenTerminal | Trendshift" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/215916?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-215916" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/215916/daily?language=TypeScript" alt="ErTasselli%2FOpenEdge | Trendshift" width="250" height="55"/></a>
 
 <br/>
 
-<img src="docs/screenshots/dashboard.png" alt="OpenTerminal dashboard — live chart, quote panel, watchlist, news and macro indexes" width="100%" />
+<img src="docs/screenshots/dashboard.png" alt="OpenEdge trading workspace — live chart, quote panel, watchlist, news and macro indexes" width="100%" />
 
 <sub>⭐ If this is useful to you, consider starring the repo — it genuinely helps other people find it.</sub>
 
@@ -23,13 +23,13 @@ Dark. Dense. Keyboard‑driven. Zero paid API keys, zero subscriptions.
 
 <br/>
 
-## Why OpenTerminal?
+## Why OpenEdge?
 
 Real trading terminals cost **$2,000+ a month**. Most retail dashboards either lock the good stuff behind a paywall or run on a single flaky data source that breaks the moment you actually need it.
 
-OpenTerminal takes a different approach: it stitches together several **free, publicly documented (or reverse‑engineered but widely used) market data endpoints** — the same ones that power major finance sites' own front ends — into one fast, keyboard‑first, widget‑based dashboard that runs entirely on your machine. Every data endpoint has an automatic fallback chain, so a single provider hiccup never takes the whole app down.
+OpenEdge takes a different approach: it stitches together several **free, publicly documented (or reverse‑engineered but widely used) market data endpoints** — the same ones that power major finance sites' own front ends — into one fast, keyboard‑first trading workspace — markets, a symbol workbench, the scanner, paper execution, portfolio and research — that runs entirely on your machine. Every data endpoint has an automatic fallback chain, so a single provider hiccup never takes the whole app down.
 
-No signup. No credit card. No rate‑limited demo tier. Clone it, `npm install`, and you have a live terminal in under a minute.
+No signup. No credit card. No rate‑limited demo tier. Clone it, `npm install`, and you have a live trading workspace in under a minute.
 
 <br/>
 

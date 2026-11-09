@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 
-// Direct HLS streams from each channel's own free, publicly reachable CDN —
+// Direct HLS streams from each channel's own free, publicly reachable CDN -
 // no YouTube involved, so no embed/consent-wall restrictions. Verified live.
 const CHANNELS = [
   { id: "bloomberg", label: "Bloomberg TV", url: "https://liveprodusphoenixeast.global.ssl.fastly.net/USPhx-HD/Channel-TX-USPhx-AWS-virginia-1/Source-USPhx-16k-1-s6lk2-BP-07-02-81ykIWnsMsg_live.m3u8" },
@@ -56,7 +56,7 @@ export default function TvWidget() {
         ))}
       </div>
       <div className="relative flex-1 min-h-0 bg-black">
-        <video ref={videoRef} className="w-full h-full" autoPlay muted controls playsInline />
+        <video ref={videoRef} className="w-full h-full" autoPlay muted controls playsInline poster="/live-tv-poster.svg" />
         {error && (
           <div className="absolute inset-0 flex items-center justify-center p-4 text-center dim bg-black">
             {error}

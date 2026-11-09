@@ -27,7 +27,7 @@ export function strategyLabel(strategy: string): string {
 }
 
 function price(value: number | null): string {
-  return value === null || !Number.isFinite(value) ? "—" : value.toFixed(2);
+  return value === null || !Number.isFinite(value) ? "-" : value.toFixed(2);
 }
 
 export function stateLabel(opportunity: Pick<Opportunity, "state">): string {
@@ -158,13 +158,13 @@ export function executionLevels(opportunity: Opportunity): LevelTile[] {
     return [
       {
         label: "Short put",
-        value: levels.shortPut === null ? "—" : price(levels.shortPut),
+        value: levels.shortPut === null ? "-" : price(levels.shortPut),
         tone: "down",
         hint: "Sell this put strike; the long put wing is the defined risk.",
       },
       {
         label: "Short call",
-        value: levels.shortCall === null ? "—" : price(levels.shortCall),
+        value: levels.shortCall === null ? "-" : price(levels.shortCall),
         tone: "down",
         hint: "Sell this call strike; the long call wing is the defined risk.",
       },
@@ -182,13 +182,13 @@ export function executionLevels(opportunity: Opportunity): LevelTile[] {
     return [
       {
         label: "Short strike",
-        value: short ? `${short.strike} ${short.optionType}` : "—",
+        value: short ? `${short.strike} ${short.optionType}` : "-",
         tone: "down",
         hint: "The short leg carries the directional risk; the long leg caps it.",
       },
       {
         label: "Invalidation",
-        value: levels.invalidation === null ? "—" : price(levels.invalidation),
+        value: levels.invalidation === null ? "-" : price(levels.invalidation),
         tone: "down",
         hint: opportunity.conditions.invalidation,
       },
@@ -204,19 +204,19 @@ export function executionLevels(opportunity: Opportunity): LevelTile[] {
   return [
     {
       label: "Entry",
-      value: levels.entry === null ? "—" : price(levels.entry),
+      value: levels.entry === null ? "-" : price(levels.entry),
       tone: "amber",
       hint: opportunity.conditions.entry,
     },
     {
       label: "Invalidation",
-      value: levels.invalidation === null ? "—" : price(levels.invalidation),
+      value: levels.invalidation === null ? "-" : price(levels.invalidation),
       tone: "down",
       hint: opportunity.conditions.invalidation,
     },
     {
       label: "Target",
-      value: levels.target === null ? "—" : price(levels.target),
+      value: levels.target === null ? "-" : price(levels.target),
       tone: "up",
       hint: opportunity.conditions.target ?? "No target configured.",
     },
@@ -227,7 +227,7 @@ export function executionLevels(opportunity: Opportunity): LevelTile[] {
 export function planLine(opportunity: Opportunity): string {
   return executionLevels(opportunity)
     .map((level) => `${level.label} ${level.value}`)
-    .join(" · ");
+    .join(", ");
 }
 
 type FeatureFormat = "price" | "pct" | "number" | "volume";
@@ -357,7 +357,7 @@ export function setupInsights(
   if (opportunity.currentHealth !== "current") {
     watches.push({
       tone: opportunity.currentHealth === "stale" ? "amber" : "down",
-      text: `${opportunity.currentHealth === "stale" ? "Stale" : "Unavailable"} data at the last check — re-verify quotes before acting.`,
+      text: `${opportunity.currentHealth === "stale" ? "Stale" : "Unavailable"} data at the last check - re-verify quotes before acting.`,
     });
   }
 

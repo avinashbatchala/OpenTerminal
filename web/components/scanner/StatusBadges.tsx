@@ -28,7 +28,7 @@ export function HealthBadge({ health }: { health: string }) {
         : "scanner-badge--down";
   return (
     <span className={`scanner-badge ${tone}`} title={`Data health: ${health}`}>
-      {health.toUpperCase()}
+      {health}
     </span>
   );
 }

@@ -227,7 +227,7 @@ describe("levels, legs and package", () => {
   });
 
   it("builds a compact plan line", () => {
-    expect(planLine(opportunity())).toBe("Entry 101.00 · Invalidation 95.00 · Target 105.00");
+    expect(planLine(opportunity())).toBe("Entry 101.00, Invalidation 95.00, Target 105.00");
   });
 
   it("derives mid prices and per-share package price", () => {

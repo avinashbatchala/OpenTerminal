@@ -109,9 +109,9 @@ function EconomicTab() {
               </td>
               <td>{e.country}</td>
               <td className={`!text-left ${IMPACT_CLASS[e.impact]}`}>{e.title}</td>
-              <td>{e.forecast ?? "—"}</td>
-              <td className="dim">{e.previous ?? "—"}</td>
-              <td className={e.actual ? "text-[var(--text)]" : "dim"}>{e.actual ?? "—"}</td>
+              <td>{e.forecast ?? "-"}</td>
+              <td className="dim">{e.previous ?? "-"}</td>
+              <td className={e.actual ? "text-[var(--text)]" : "dim"}>{e.actual ?? "-"}</td>
             </tr>
           ))}
         </tbody>
@@ -121,7 +121,7 @@ function EconomicTab() {
   );
 }
 
-const fmtDate = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString("en-US") : "—");
+const fmtDate = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleDateString("en-US") : "-");
 
 type EarningsHistoryRow = {
   fiscalQtrEnd: string;
@@ -168,11 +168,11 @@ function EarningsHistoryRows({ symbol }: { symbol: string }) {
           <tr key={row.dateReported}>
             <td className="!text-left dim">{row.fiscalQtrEnd}</td>
             <td className="!text-left dim">{fmtDate(row.dateReported)}</td>
-            <td className="dim">{row.consensusForecast != null ? `$${row.consensusForecast.toFixed(2)}` : "—"}</td>
-            <td className={surpriseClass(row)}>{row.eps != null ? `$${row.eps.toFixed(2)}` : "—"}</td>
-            <td className={surpriseClass(row)}>{row.surprisePercent != null ? `${fmt(row.surprisePercent, 1)}%` : "—"}</td>
+            <td className="dim">{row.consensusForecast != null ? `$${row.consensusForecast.toFixed(2)}` : "-"}</td>
+            <td className={surpriseClass(row)}>{row.eps != null ? `$${row.eps.toFixed(2)}` : "-"}</td>
+            <td className={surpriseClass(row)}>{row.surprisePercent != null ? `${fmt(row.surprisePercent, 1)}%` : "-"}</td>
             <td className={pctClass(row.dayAfterChangePercent)}>
-              {row.dayAfterChangePercent != null ? `${fmt(row.dayAfterChangePercent, 1)}%` : "—"}
+              {row.dayAfterChangePercent != null ? `${fmt(row.dayAfterChangePercent, 1)}%` : "-"}
             </td>
           </tr>
         ))}
@@ -227,7 +227,7 @@ function EarningsTab() {
               <td className="!text-left text-[var(--text)] font-bold underline decoration-1">{e.symbol}</td>
               <td className="dim">{fmtDate(e.lastEarningsDate)}</td>
               <td className="amber">{fmtDate(e.nextEarningsDate)}</td>
-              <td>{e.epsForecast != null ? `$${e.epsForecast.toFixed(2)}` : "—"}</td>
+              <td>{e.epsForecast != null ? `$${e.epsForecast.toFixed(2)}` : "-"}</td>
             </tr>
             {expanded === e.symbol && (
               <tr>

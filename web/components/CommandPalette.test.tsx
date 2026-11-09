@@ -1,8 +1,12 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useTerminal } from "../store/terminal";
 import CommandPalette from "./CommandPalette";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 beforeEach(() => {
   useTerminal.setState({ activeSymbol: "AAPL", commandOpen: false });
@@ -25,7 +29,7 @@ describe("command palette focus restoration", () => {
     opener.focus();
 
     act(() => useTerminal.setState({ commandOpen: true }));
-    const input = await screen.findByPlaceholderText(/Ticker, company/);
+    const input = await screen.findByPlaceholderText(/Search symbols/);
     await waitFor(() => expect(input).toHaveFocus());
 
     act(() => useTerminal.setState({ commandOpen: false }));

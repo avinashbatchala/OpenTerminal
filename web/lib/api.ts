@@ -73,12 +73,12 @@ export type Quote = {
 export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
 export function fmt(n: number | null | undefined, digits = 2): string {
-  if (n === null || n === undefined || !isFinite(n)) return "—";
+  if (n === null || n === undefined || !isFinite(n)) return "-";
   return n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 export function fmtBig(n: number | null | undefined): string {
-  if (n === null || n === undefined || !isFinite(n)) return "—";
+  if (n === null || n === undefined || !isFinite(n)) return "-";
   const abs = Math.abs(n);
   if (abs >= 1e12) return (n / 1e12).toFixed(2) + "T";
   if (abs >= 1e9) return (n / 1e9).toFixed(2) + "B";

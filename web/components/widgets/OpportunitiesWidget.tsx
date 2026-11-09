@@ -188,10 +188,10 @@ export default function OpportunitiesWidget() {
               onClick={() => void queryClient.invalidateQueries({ queryKey: ["scanner"] })}
               disabled={opportunitiesQuery.isFetching}
             >
-              REFRESH
+              Refresh
             </button>
             <button type="button" className="term-btn" onClick={() => setSettingsOpen(true)}>
-              SETTINGS
+              Settings
             </button>
           </span>
         </div>
@@ -206,7 +206,7 @@ export default function OpportunitiesWidget() {
                 aria-pressed={horizon === entry}
                 onClick={() => selectHorizon(entry)}
               >
-                {entry.toUpperCase()}
+                {entry.charAt(0).toUpperCase() + entry.slice(1)}
               </button>
             ))}
           </div>
@@ -220,7 +220,7 @@ export default function OpportunitiesWidget() {
             History
           </button>
           <span className="dim text-[10px]">
-            {visible.length} shown{opportunitiesQuery.isFetching ? " · updating…" : ""}
+            {visible.length} shown{opportunitiesQuery.isFetching ? ", updating…" : ""}
           </span>
         </div>
       </header>
@@ -252,7 +252,7 @@ export default function OpportunitiesWidget() {
           <div className="amber font-bold">{scannerEmpty.title}</div>
           <div className="dim">{scannerEmpty.detail}</div>
           <button type="button" className="term-btn mt-2" onClick={() => setSettingsOpen(true)}>
-            SCANNER SETTINGS
+            Scanner settings
           </button>
         </div>
       ) : visible.length === 0 ? (
@@ -271,7 +271,7 @@ export default function OpportunitiesWidget() {
           </div>
           {view === "active" && all.length > 0 && (
             <button type="button" className="term-btn mt-2" onClick={() => setView("all")}>
-              SHOW HISTORY
+              Show history
             </button>
           )}
         </div>
@@ -299,7 +299,7 @@ export default function OpportunitiesWidget() {
                   <span className="opps-top">
                     <span className="opps-symbol">{opportunity.symbol}</span>
                     <span className={`opps-dir ${directionClass(opportunity.direction)}`}>
-                      {opportunity.direction.toUpperCase()}
+                      {opportunity.direction}
                     </span>
                     <StateBadge state={opportunity.state} />
                     {opportunity.currentHealth !== "current" && (
@@ -321,16 +321,12 @@ export default function OpportunitiesWidget() {
                         }`}
                         title={`Paper trade ${paper.status.replaceAll("_", " ")}`}
                       >
-                        PAPER
+                        Paper
                       </span>
                     )}
                   </span>
                   <span className="opps-meta">
-                    {STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}
-                    <span className="dim"> · </span>
-                    {opportunity.recipeId}
-                    <span className="dim"> · </span>
-                    {opportunity.horizon}
+                    {STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}, {opportunity.recipeId}, {opportunity.horizon}
                   </span>
                   <span className="opps-plan">
                     <span className={action.tone}>{action.title}</span> {action.directive}

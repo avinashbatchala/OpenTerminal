@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Live TV">
+  <rect width="1280" height="720" fill="#12161b"/>
+  <rect x="40" y="40" width="1200" height="640" rx="12" fill="#1b2027" stroke="#3c4652"/>
+  <text x="80" y="640" fill="#e8edf2" font-family="system-ui, sans-serif" font-size="42" font-weight="600">Live TV</text>
+  <text x="80" y="685" fill="#98a2ad" font-family="system-ui, sans-serif" font-size="22">Select a channel to start the stream.</text>
+</svg>

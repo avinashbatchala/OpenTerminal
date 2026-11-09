@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
+import { PageHeader } from "../../components/shell/Surface";
 
 type DataSource = "schwab" | "public";
 
@@ -34,11 +34,13 @@ type SettingsPayload = {
   };
 };
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, children, wide = false }: { title: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <section className="border border-[var(--border)] bg-[var(--panel)] mb-3">
-      <div className="panel-title cursor-default">{title}</div>
-      <div className="p-3 space-y-3">{children}</div>
+    <section className={`edge-surface ${wide ? "edge-surface--wide" : ""}`}>
+      <div className="edge-surface-head">
+        <h2 className="edge-surface-title">{title}</h2>
+      </div>
+      <div className="edge-surface-body space-y-3">{children}</div>
     </section>
   );
 }
@@ -108,7 +110,7 @@ export default function SettingsPage() {
     mutationFn: () => apiGet<{ url: string }>("/api/schwab/auth-url"),
     onSuccess: ({ url }) => {
       setAuthUrl(url);
-      setNotice("Authorization URL ready — open it, approve access, then paste the redirected URL below.");
+      setNotice("Authorization URL ready. Open it, approve access, then paste the redirected URL below.");
     },
     onError: (err: Error) => setNotice(err.message),
   });
@@ -136,17 +138,16 @@ export default function SettingsPage() {
   const schwab = data?.schwab;
 
   return (
-    <div className="h-screen overflow-auto">
-      <header className="sticky top-0 z-10 flex items-center gap-4 px-4 h-9 bg-[var(--panel-2)] border-b border-[var(--border)]">
-        <Link href="/" className="amber font-bold tracking-widest">OPENTERMINAL</Link>
-        <span className="dim">/ SETTINGS</span>
-        <Link href="/" className="ml-auto dim hover:text-[var(--amber)]">← BACK TO TERMINAL</Link>
-      </header>
+    <div className="edge-page edge-settings">
+      <PageHeader
+        title="Settings"
+        lead="Data source, broker connection, assistant and paper execution configuration."
+      />
 
-      <main className="max-w-3xl mx-auto p-4">
-        {error && <div className="down mb-3">Could not load settings: {(error as Error).message}</div>}
-        {notice && <div className="border border-[var(--amber-dim)] px-3 py-2 mb-3 amber">{notice}</div>}
+      {error && <div className="down mb-3">Could not load settings: {(error as Error).message}</div>}
+      {notice && <div className="edge-surface edge-settings-notice">{notice}</div>}
 
+      <div className="edge-settings-grid">
         <Panel title="Data source">
           <Row label="Market data">
             <select value={dataSource} onChange={(e) => setDataSource(e.target.value as DataSource)}>
@@ -176,7 +177,7 @@ export default function SettingsPage() {
           <div className="dim text-[11px]">
             Callback URL: <span className="text-[var(--text)]">{schwab?.redirectUri ?? "https://127.0.0.1"}</span>
             {schwab?.accessTokenExpiresAt && (
-              <> · access token expires {new Date(schwab.accessTokenExpiresAt).toLocaleString()}</>
+              <>; access token expires {new Date(schwab.accessTokenExpiresAt).toLocaleString()}</>
             )}
           </div>
           <div className="text-[11px] dim">
@@ -189,11 +190,11 @@ export default function SettingsPage() {
               disabled={!schwab?.clientIdConfigured || getAuthUrl.isPending}
               onClick={() => getAuthUrl.mutate()}
             >
-              {getAuthUrl.isPending ? "BUILDING…" : "GET AUTHORIZATION URL"}
+              {getAuthUrl.isPending ? "Building…" : "Get authorization URL"}
             </button>
             {authUrl && (
               <a href={authUrl} target="_blank" rel="noreferrer" className="amber text-[11px] underline">
-                OPEN AUTHORIZATION URL ↗
+                Open authorization URL
               </a>
             )}
           </div>
@@ -209,20 +210,20 @@ export default function SettingsPage() {
               disabled={!callbackUrl.trim() || authenticate.isPending}
               onClick={() => authenticate.mutate()}
             >
-              {authenticate.isPending ? "AUTHENTICATING…" : "AUTHENTICATE SCHWAB"}
+              {authenticate.isPending ? "Authenticating…" : "Authenticate Schwab"}
             </button>
             <button
               className="term-btn"
               disabled={disconnect.isPending || !schwab?.configured}
               onClick={() => disconnect.mutate()}
             >
-              DISCONNECT
+              Disconnect
             </button>
           </div>
           {schwab?.streaming.error && <div className="down text-[11px]">{schwab.streaming.error}</div>}
         </Panel>
 
-        <Panel title="AI assistant">
+        <Panel title="AI assistant" wide>
           <div className="flex gap-3 items-center text-[11px]">
             <span>Credentials:</span>
             <Badge ok={Boolean(aiStatus?.configured)}>{aiStatus?.source === "settings" ? "saved in settings" : aiStatus?.source === "env" ? "from .env" : "not configured"}</Badge>
@@ -232,7 +233,7 @@ export default function SettingsPage() {
               type="password"
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setClearKey(false); }}
-              placeholder={aiStatus?.configured ? "configured — leave blank to keep" : "sk-ant-..."}
+              placeholder={aiStatus?.configured ? "configured, leave blank to keep" : "sk-ant-..."}
               className="flex-1"
               autoComplete="off"
             />
@@ -263,10 +264,16 @@ export default function SettingsPage() {
           </div>
         </Panel>
 
-        <button className="term-btn" disabled={save.isPending || !data} onClick={() => save.mutate()}>
-          {save.isPending ? "SAVING…" : "SAVE SETTINGS"}
-        </button>
-      </main>
+        <div className="edge-settings-actions">
+          <button
+            className="edge-btn edge-btn--primary"
+            disabled={save.isPending || !data}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending ? "Saving…" : "Save settings"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

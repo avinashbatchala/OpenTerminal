@@ -504,16 +504,46 @@ export async function optionChain(symbol: string, expiry?: string): Promise<Schw
   return mapSchwabOptionChain(symbol, json, selected, dates);
 }
 
-export function mapSchwabSearch(raw: Record<string, SchwabInstrument>): SearchResult[] {
-  return Object.entries(raw ?? {})
-    .filter(([, value]) => value && typeof value === "object")
-    .map(([symbol, value]) => ({
-      symbol: value.symbol ?? symbol,
-      name: value.description ?? value.symbol ?? symbol,
-      exchange: (value.exchange && EXCHANGE_NAMES[value.exchange]) || value.exchange || "",
-      type: value.assetType ?? "",
-    }))
-    .filter((row) => row.symbol && (!row.type || SEARCHABLE_ASSETS.has(row.type.toUpperCase())))
+export function mapSchwabSearch(
+  raw: Record<string, SchwabInstrument | SchwabInstrument[]> | SchwabInstrument[] | null | undefined
+): SearchResult[] {
+  const entries: Array<[string, SchwabInstrument]> = [];
+  const list = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { instruments?: unknown } | null)?.instruments)
+      ? ((raw as { instruments?: SchwabInstrument[] }).instruments ?? [])
+      : null;
+
+  if (list) {
+    for (const item of list) {
+      if (item && typeof item === "object") {
+        entries.push([String(item.symbol ?? ""), item]);
+      }
+    }
+  } else {
+    for (const [key, value] of Object.entries(raw ?? {})) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      entries.push([key, value as SchwabInstrument]);
+    }
+  }
+
+  return entries
+    .map(([key, value]) => {
+      const symbol = String(value.symbol ?? key ?? "").trim().toUpperCase();
+      if (!symbol || symbol === "INSTRUMENTS") return null;
+      return {
+        symbol,
+        name: value.description ?? value.symbol ?? key,
+        exchange: (value.exchange && EXCHANGE_NAMES[value.exchange]) || value.exchange || "",
+        type: value.assetType ?? "",
+      };
+    })
+    .filter(
+      (row): row is SearchResult =>
+        row !== null &&
+        Boolean(row.symbol) &&
+        (!row.type || SEARCHABLE_ASSETS.has(row.type.toUpperCase()))
+    )
     .slice(0, 15);
 }
 

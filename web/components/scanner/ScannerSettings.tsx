@@ -55,11 +55,11 @@ export default function ScannerSettings({ status }: { status: ScannerStatus | un
           </div>
           <div>
             <dt>Last scan</dt>
-            <dd>{lastRun ? `${formatDateTime(lastRun.startedAt)} · ${lastRun.status}` : "None yet"}</dd>
+            <dd>{lastRun ? `${formatDateTime(lastRun.startedAt)}, ${lastRun.status}` : "None yet"}</dd>
           </div>
           <div>
             <dt>Next scan</dt>
-            <dd>{status.nextScheduledAt ? formatDateTime(status.nextScheduledAt) : "—"}</dd>
+            <dd>{status.nextScheduledAt ? formatDateTime(status.nextScheduledAt) : "-"}</dd>
           </div>
           <div>
             <dt>Watchlist</dt>
@@ -149,7 +149,7 @@ export default function ScannerSettings({ status }: { status: ScannerStatus | un
           <summary className="scanner-summary">Last scan diagnostics</summary>
           <div className="scanner-settings-body">
             <div className="dim text-[10.5px]">
-              {lastRun.candidates} candidate(s) · {lastRun.qualified} qualified · {lastRun.coverage.length}{" "}
+              {lastRun.candidates} candidate(s), {lastRun.qualified} qualified, {lastRun.coverage.length}{" "}
               symbol(s) covered
             </div>
             {lastRun.failures.length > 0 && (
@@ -176,7 +176,7 @@ export default function ScannerSettings({ status }: { status: ScannerStatus | un
                         <td className={entry.status === "scanned" ? "up" : entry.status === "failed" ? "down" : "amber"}>
                           {entry.status}
                         </td>
-                        <td className="dim">{entry.reason ?? "—"}</td>
+                        <td className="dim">{entry.reason ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>

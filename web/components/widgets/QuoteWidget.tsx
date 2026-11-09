@@ -42,7 +42,7 @@ export default function QuoteWidget({ widget }: { widget: WidgetInstance }) {
     ["Mkt Cap", fmtBig(quote.marketCap)],
     ["P/E (ttm)", fmt(quote.pe)],
     ["EPS (ttm)", fmt(quote.eps)],
-    ["Div Yield", quote.dividendYield !== null ? fmt(quote.dividendYield * 100) + "%" : "—"],
+    ["Div Yield", quote.dividendYield !== null ? fmt(quote.dividendYield * 100) + "%" : "-"],
     ["52W High", fmt(quote.week52High)],
     ["52W Low", fmt(quote.week52Low)],
     ["Beta", fmt(quote.beta)],
@@ -65,7 +65,7 @@ export default function QuoteWidget({ widget }: { widget: WidgetInstance }) {
       <div className="dim text-[11px] mb-2 truncate">{quote.name}</div>
       <div className="grid grid-cols-2 gap-x-4">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex justify-between border-b border-[#2c2c2e] py-0.5">
+          <div key={label} className="flex justify-between border-b border-[var(--edge-line)] py-0.5">
             <span className="dim">{label}</span>
             <span>{value}</span>
           </div>

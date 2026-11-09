@@ -64,7 +64,7 @@ export default function InsiderWidget({ widget }: { widget: WidgetInstance }) {
               <td className="!text-left dim whitespace-nowrap">{t.transactionDate}</td>
               <td className="!text-left">{t.ownerName}</td>
               <td className="!text-left dim truncate max-w-[140px]" title={t.ownerTitle ?? ""}>
-                {t.ownerTitle ?? (t.isDirector ? "Director" : t.isTenPercentOwner ? "10%+ Owner" : "—")}
+                {t.ownerTitle ?? (t.isDirector ? "Director" : t.isTenPercentOwner ? "10%+ Owner" : "-")}
               </td>
               <td className={t.acquiredDisposed === "A" ? "up" : t.acquiredDisposed === "D" ? "down" : "dim"}>
                 {CODE_LABEL[t.transactionCode] ?? t.transactionCode}

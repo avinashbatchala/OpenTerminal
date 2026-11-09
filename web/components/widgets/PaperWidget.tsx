@@ -22,7 +22,7 @@ import ScannerOverlay from "../scanner/ScannerOverlay";
 type Tab = "open" | "closed";
 
 function Pnl({ value }: { value: number | null }) {
-  if (value === null || !Number.isFinite(value)) return <span className="dim">—</span>;
+  if (value === null || !Number.isFinite(value)) return <span className="dim">-</span>;
   return (
     <span className={value >= 0 ? "up" : "down"}>
       {value >= 0 ? "+" : ""}
@@ -42,7 +42,7 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
 
 function premiumLabel(trade: ExecutionTrade): string {
   const entry = entryPremiumUsd(trade);
-  if (entry === null) return "—";
+  if (entry === null) return "-";
   return entry >= 0 ? `Debit ${formatUsd(entry)}` : `Credit ${formatUsd(-entry)}`;
 }
 
@@ -237,7 +237,7 @@ function PaperSettings({
           onClick={() => save.mutate()}
           disabled={save.isPending}
         >
-          {save.isPending ? "SAVING…" : "SAVE SETTINGS"}
+          {save.isPending ? "Saving…" : "Save settings"}
         </button>
       </div>
     </div>
@@ -267,11 +267,11 @@ function TradeDetail({
           <span className="paper-detail-symbol">{trade.symbol}</span>
           <span className="dim">
             {" "}
-            · {STRATEGY_LABELS[trade.strategy] ?? trade.strategy} · {trade.horizon}
+           , {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
           </span>
           <div className="dim text-[10px]">
-            Opened {trade.openedAt ? formatDateTime(trade.openedAt) : "—"}
-            {trade.closedAt ? ` · Closed ${formatDateTime(trade.closedAt)}` : ""}
+            Opened {trade.openedAt ? formatDateTime(trade.openedAt) : "-"}
+            {trade.closedAt ? `, Closed ${formatDateTime(trade.closedAt)}` : ""}
           </div>
         </div>
         <span
@@ -291,7 +291,7 @@ function TradeDetail({
         <div className="paper-mark-note dim">
           Marked {formatDateTime(latestMark.markedAt)}
           {latestMark.underlyingPrice !== null
-            ? ` · underlying ${formatUsd(latestMark.underlyingPrice)}`
+            ? `, underlying ${formatUsd(latestMark.underlyingPrice)}`
             : ""}
         </div>
       )}
@@ -305,10 +305,10 @@ function TradeDetail({
               ? trade.exitSummary.netPricePerShare >= 0
                 ? `Debit ${formatUsd(trade.exitSummary.netPricePerShare * (trade.exitSummary.legs[0]?.multiplier ?? 100))}`
                 : `Credit ${formatUsd(-trade.exitSummary.netPricePerShare * (trade.exitSummary.legs[0]?.multiplier ?? 100))}`
-              : "—"
+              : "-"
           }
         />
-        <Metric label="Mark" value={latestMark ? formatUsd(latestMark.liquidationValueUsd) : "—"} />
+        <Metric label="Mark" value={latestMark ? formatUsd(latestMark.liquidationValueUsd) : "-"} />
         <Metric
           label={trade.status === "closed" ? "Realized" : "Unrealized"}
           value={
@@ -349,7 +349,7 @@ function TradeDetail({
           <tbody>
             {detail.fills.map((fill) => (
               <tr key={fill.fillId}>
-                <td className={fill.side === "buy" ? "up" : "down"}>{fill.side.toUpperCase()}</td>
+                <td className={fill.side === "buy" ? "up" : "down"}>{fill.side.charAt(0).toUpperCase() + fill.side.slice(1)}</td>
                 <td>{fill.contractSymbol}</td>
                 <td>{fill.quantity}</td>
                 <td>{formatUsd(fill.price)}</td>
@@ -389,11 +389,11 @@ function TradeDetail({
       <div className="paper-detail-actions">
         {trade.status === "open" && (
           <button type="button" className="term-btn" onClick={onCloseTrade} disabled={closing}>
-            {closing ? "CLOSING…" : "CLOSE TRADE"}
+            {closing ? "Closing…" : "Close trade"}
           </button>
         )}
         <button type="button" className="term-btn" onClick={onClose}>
-          CLOSE DETAIL
+          Close detail
         </button>
       </div>
     </div>
@@ -476,17 +476,17 @@ export default function PaperWidget() {
               config?.enabled ? "scanner-badge--up" : "scanner-badge--muted"
             }`}
           >
-            {config?.enabled ? "● AUTO" : "○ PAUSED"}
+            {config?.enabled ? "● Auto" : "○ Paused"}
           </span>
           {config && (
             <span className="dim">
-              entries {config.automation.entries ? "on" : "off"} · exits{" "}
+              entries {config.automation.entries ? "on" : "off"}, exits{" "}
               {config.automation.exits ? "on" : "off"}
             </span>
           )}
           <span className="paper-head-actions">
             <button type="button" className="term-btn" onClick={() => void invalidate()}>
-              REFRESH
+              Refresh
             </button>
             <button
               type="button"
@@ -494,7 +494,7 @@ export default function PaperWidget() {
               onClick={() => toggle.mutate(!config?.enabled)}
               disabled={!config || toggle.isPending}
             >
-              {toggle.isPending ? "WORKING…" : config?.enabled ? "PAUSE" : "START"}
+              {toggle.isPending ? "Working…" : config?.enabled ? "Pause" : "Start"}
             </button>
             <button
               type="button"
@@ -502,7 +502,7 @@ export default function PaperWidget() {
               onClick={() => setSettingsOpen(true)}
               disabled={!config}
             >
-              SETTINGS
+              Settings
             </button>
           </span>
         </div>
@@ -523,7 +523,7 @@ export default function PaperWidget() {
               aria-pressed={tab === "open"}
               onClick={() => setTab("open")}
             >
-              POSITIONS {openTrades.length}
+              Positions {openTrades.length}
             </button>
             <button
               type="button"
@@ -532,7 +532,7 @@ export default function PaperWidget() {
               aria-pressed={tab === "closed"}
               onClick={() => setTab("closed")}
             >
-              HISTORY {historyTrades.length}
+              History {historyTrades.length}
             </button>
           </div>
           <span className="flex items-center gap-2">
@@ -553,7 +553,7 @@ export default function PaperWidget() {
               }
             >
               {liveExecution.connected && liveExecution.live.streaming
-                ? "● LIVE"
+                ? "● Live"
                 : liveExecution.connected
                   ? "● POLLING"
                   : "○ OFFLINE"}
@@ -574,7 +574,7 @@ export default function PaperWidget() {
           <div className="paper-empty">
             <div className="amber font-bold">No open paper trades</div>
             <div className="dim">
-              Enable auto entries in settings, or use PAPER on an entry-ready setup.
+              Enable auto entries in settings, or use Paper on an entry-ready setup.
             </div>
           </div>
         ) : (
@@ -586,7 +586,7 @@ export default function PaperWidget() {
                 <button
                   key={trade.id}
                   type="button"
-                  className="scanner-card paper-row"
+                  className="scanner-card paper-row whitespace-nowrap"
                   data-selected={selectedId === trade.id}
                   onClick={() => setSelectedId(trade.id)}
                 >
@@ -601,12 +601,12 @@ export default function PaperWidget() {
                         {trade.status.replaceAll("_", " ")}
                       </span>
                       <span className="dim text-[10px]">
-                        {STRATEGY_LABELS[trade.strategy] ?? trade.strategy} · {trade.horizon}
+                        {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
                       </span>
                     </span>
-                    <span className="paper-row-meta">
-                      {premiumLabel(trade)} · Mark{" "}
-                      {mark ? formatUsd(mark.liquidationValueUsd) : "—"}
+                    <span className="paper-row-meta whitespace-nowrap">
+                      {premiumLabel(trade)}, Mark{" "}
+                      {mark ? formatUsd(mark.liquidationValueUsd) : "-"}
                     </span>
                   </span>
                   <span className="paper-row-side">
@@ -631,7 +631,7 @@ export default function PaperWidget() {
             <button
               key={trade.id}
               type="button"
-              className="scanner-card paper-row"
+              className="scanner-card paper-row whitespace-nowrap"
               data-selected={selectedId === trade.id}
               onClick={() => setSelectedId(trade.id)}
             >
@@ -646,11 +646,10 @@ export default function PaperWidget() {
                     {trade.status}
                   </span>
                   <span className="dim text-[10px]">
-                    {STRATEGY_LABELS[trade.strategy] ?? trade.strategy} · {trade.horizon}
+                    {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
                   </span>
                 </span>
                 <span className="paper-row-meta">
-                  Fees {formatUsd(trade.pnl?.feesUsd ?? null)} ·{" "}
                   {trade.closedAt
                     ? `Closed ${formatDateTime(trade.closedAt)}`
                     : `Updated ${formatDateTime(trade.updatedAt)}`}
@@ -660,7 +659,7 @@ export default function PaperWidget() {
                 {trade.status === "closed" ? (
                   <>
                     <Pnl value={trade.pnl?.netUsd ?? null} />
-                    <span className="dim text-[9px]">net P&amp;L</span>
+                    <span className="dim text-[9px]">P&amp;L</span>
                   </>
                 ) : (
                   <span className="dim text-[9px]">no fill</span>

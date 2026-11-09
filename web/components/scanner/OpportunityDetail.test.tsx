@@ -165,7 +165,7 @@ describe("scanner opportunity detail", () => {
       </QueryClientProvider>
     );
 
-    await waitFor(() => expect(screen.getByText(/AAPL · Long call/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/AAPL, Long call/)).toBeInTheDocument());
     expect(screen.getByText("AAPL261120C00100000")).toBeInTheDocument();
     expect(screen.getByText(/\$111.75/)).toBeInTheDocument();
     expect(screen.getByText(/One complete strategy unit/)).toBeInTheDocument();

@@ -226,7 +226,7 @@ export default function ScannerConfigPanel({ status }: Props) {
       )}
       {status.readiness.warnings.length > 0 && (
         <div className="border border-[var(--border)] text-[11px] p-2 text-[var(--text-dim)]">
-          {status.readiness.warnings.join(" · ")}
+          {status.readiness.warnings.join(", ")}
         </div>
       )}
 
@@ -242,13 +242,13 @@ export default function ScannerConfigPanel({ status }: Props) {
         </Section>
 
         <Section title="Expiry ranges">
-          <div className="dim text-[10px] uppercase tracking-wide">Intraday</div>
+          <div className="dim text-[10px]">Intraday</div>
           <NumberField label="Minimum days" value={draft.horizons.intraday.minDays} onChange={(value) => setHorizon("intraday", { minDays: value })} min={0} step={1} unit="days" />
           <NumberField label="Maximum days" value={draft.horizons.intraday.maxDays} onChange={(value) => setHorizon("intraday", { maxDays: value })} min={0} step={1} unit="days" />
           <Check checked={draft.horizons.intraday.confirmed} onChange={(checked) => setHorizon("intraday", { confirmed: checked })}>
             Confirm the intraday expiry range.
           </Check>
-          <div className="dim text-[10px] uppercase tracking-wide pt-1">Swing</div>
+          <div className="dim text-[10px] pt-1">Swing</div>
           <NumberField label="Minimum days" value={draft.horizons.swing.minDays} onChange={(value) => setHorizon("swing", { minDays: value })} min={0} step={1} unit="days" />
           <NumberField label="Maximum days" value={draft.horizons.swing.maxDays} onChange={(value) => setHorizon("swing", { maxDays: value })} min={0} step={1} unit="days" />
           <Check checked={draft.horizons.swing.confirmed} onChange={(checked) => setHorizon("swing", { confirmed: checked })}>
@@ -318,10 +318,10 @@ export default function ScannerConfigPanel({ status }: Props) {
           const recipe = draft.recipes[definition.id];
           const readiness = status.readiness.recipes.find((entry) => entry.id === definition.id);
           return (
-            <Section key={definition.id} title={`${definition.name} · v${definition.version}`}>
+            <Section key={definition.id} title={`${definition.name}, v${definition.version}`}>
               <div className="text-[11px] dim">{definition.description}</div>
               <div className="text-[10px] dim">
-                Horizons: {definition.horizons.join(", ")} · Data: {definition.dataDependencies.join(", ")}
+                Horizons: {definition.horizons.join(", ")}, Data: {definition.dataDependencies.join(", ")}
               </div>
               <div className="flex flex-wrap gap-3">
                 <Check checked={recipe.enabled} onChange={(checked) => setRecipe(definition.id, { enabled: checked })}>
@@ -334,7 +334,7 @@ export default function ScannerConfigPanel({ status }: Props) {
                   Approve these parameter values
                 </Check>
               </div>
-              {!recipe.paramsApproved && <div className="amber text-[10px]">Draft defaults — not approved for activation.</div>}
+              {!recipe.paramsApproved && <div className="amber text-[10px]">Draft defaults, not approved for activation.</div>}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-1">
                 {definition.params.map((param) => (
                   <NumberField
@@ -351,7 +351,7 @@ export default function ScannerConfigPanel({ status }: Props) {
                 ))}
               </div>
               {readiness && readiness.issues.length > 0 && (
-                <div className="down text-[10px]">{readiness.issues.join(" · ")}</div>
+                <div className="down text-[10px]">{readiness.issues.join(", ")}</div>
               )}
               {readiness?.dataDependencies && (
                 <div className="dim text-[10px]">Readiness: {readiness.ready ? "ready" : "not ready"}</div>

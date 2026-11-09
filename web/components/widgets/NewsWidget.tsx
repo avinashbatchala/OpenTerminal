@@ -25,7 +25,7 @@ export default function NewsWidget({ widget }: { widget: WidgetInstance }) {
           {symbol}
         </button>
         <button className={`term-btn ${mode === "global" ? "active" : ""}`} onClick={() => setMode("global")}>
-          GLOBAL
+          Global
         </button>
       </div>
       {isLoading && <div className="p-2 dim">Loading news…</div>}

@@ -36,13 +36,13 @@ export default function RecapWidget() {
   return (
     <div>
       <div className="px-2 py-1 flex justify-between items-baseline">
-        <span className="dim text-[10px] uppercase">Market Recap</span>
+        <span className="dim text-[10px]">Market Recap</span>
         <span className="dim text-[9px]">
           Updated {new Date(data.updatedAt).toLocaleTimeString()}
         </span>
       </div>
 
-      <div className="px-2 pb-2 text-[12px] leading-relaxed border-b border-[#2c2c2e]">{data.summary}</div>
+      <div className="px-2 pb-2 text-[12px] leading-relaxed border-b border-[var(--edge-line)]">{data.summary}</div>
 
       <table className="data-table">
         <thead>
@@ -79,9 +79,9 @@ export default function RecapWidget() {
 
       <div className="grid grid-cols-2 gap-x-2 px-2 py-1">
         <div>
-          <div className="dim text-[10px] uppercase mb-1">Top gainers</div>
+          <div className="dim text-[10px] mb-1">Top gainers</div>
           {data.gainers.map((r) => (
-            <div key={r.symbol} className="flex justify-between cursor-pointer hover:bg-[#2c2c2e]" onClick={() => setActiveSymbol(r.symbol)}>
+            <div key={r.symbol} className="flex justify-between cursor-pointer hover:bg-[var(--edge-surface-2)]" onClick={() => setActiveSymbol(r.symbol)}>
               <span className="truncate mr-1">{r.symbol}</span>
               <span className={pctClass(r.changePercent)}>
                 <Flash value={r.changePercent}>{fmt(r.changePercent)}%</Flash>
@@ -90,9 +90,9 @@ export default function RecapWidget() {
           ))}
         </div>
         <div>
-          <div className="dim text-[10px] uppercase mb-1">Top losers</div>
+          <div className="dim text-[10px] mb-1">Top losers</div>
           {data.losers.map((r) => (
-            <div key={r.symbol} className="flex justify-between cursor-pointer hover:bg-[#2c2c2e]" onClick={() => setActiveSymbol(r.symbol)}>
+            <div key={r.symbol} className="flex justify-between cursor-pointer hover:bg-[var(--edge-surface-2)]" onClick={() => setActiveSymbol(r.symbol)}>
               <span className="truncate mr-1">{r.symbol}</span>
               <span className={pctClass(r.changePercent)}>
                 <Flash value={r.changePercent}>{fmt(r.changePercent)}%</Flash>
@@ -102,8 +102,8 @@ export default function RecapWidget() {
         </div>
       </div>
 
-      <div className="px-2 py-1 border-t border-[#2c2c2e]">
-        <div className="dim text-[10px] uppercase mb-1">Sector performance</div>
+      <div className="px-2 py-1 border-t border-[var(--edge-line)]">
+        <div className="dim text-[10px] mb-1">Sector performance</div>
         {data.sectors.map((s) => (
           <div key={s.sector} className="flex justify-between">
             <span className="truncate mr-1">{s.sector}</span>
@@ -112,8 +112,8 @@ export default function RecapWidget() {
         ))}
       </div>
 
-      <div className="border-t border-[#2c2c2e]">
-        <div className="dim text-[10px] uppercase px-2 pt-1">Headlines</div>
+      <div className="border-t border-[var(--edge-line)]">
+        <div className="dim text-[10px] px-2 pt-1">Headlines</div>
         {data.news.map((n, i) => {
           const body = (
             <>
@@ -121,7 +121,7 @@ export default function RecapWidget() {
               <div className="dim text-[10px]">{n.publisher}</div>
             </>
           );
-          const className = "block px-2 py-1 border-b border-[#2c2c2e] hover:bg-[#2c2c2e]";
+          const className = "block px-2 py-1 border-b border-[var(--edge-line)] hover:bg-[var(--edge-surface-2)]";
           return isSafeHttpUrl(n.link) ? (
             <a key={i} href={n.link} target="_blank" rel="noreferrer" className={className}>
               {body}

@@ -8,7 +8,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
     <html lang="en">
       <body>
         <div className="p-4 flex flex-col gap-2 items-start">
-          <span className="down">Terminal error: {error.message}</span>
+          <span className="down">OpenEdge error: {error.message}</span>
           <button onClick={reset} className="dim hover:text-[var(--amber)]">
             Retry
           </button>

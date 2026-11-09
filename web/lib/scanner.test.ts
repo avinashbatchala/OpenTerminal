@@ -193,6 +193,6 @@ describe("scanner UI helpers", () => {
   it("formats exact legs and currency without implying an execution", () => {
     expect(legsSummary(opportunity())).toBe("+1 AAPL 2026-11-20 100C");
     expect(formatUsd(111.75)).toBe("$111.75");
-    expect(formatUsd(null)).toBe("—");
+    expect(formatUsd(null)).toBe("-");
   });
 });
