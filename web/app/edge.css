@@ -2670,3 +2670,46 @@ table.data-table tbody tr:focus-within .watchlist-remove,
     white-space: normal;
   }
 }
+
+/* The inspector is narrow; let explanations wrap instead of clipping. */
+.edge-scanner-detail .level-grid,
+.edge-scanner-mobile-detail .level-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.edge-scanner-detail .level-hint,
+.edge-scanner-mobile-detail .level-hint,
+.edge-scanner-detail .detail-section-hint,
+.edge-scanner-mobile-detail .detail-section-hint {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+
+/* Sections must keep their natural height; the body is the only scroller,
+   otherwise flex-shrink clips the risk and AI review text. */
+.edge-scanner-detail .detail-body > *,
+.edge-scanner-mobile-detail .detail-body > * {
+  flex: none;
+}
+
+.edge-scanner-detail .detail-body {
+  scrollbar-gutter: stable;
+}
+
+.edge-scanner-detail .detail-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.edge-scanner-detail .detail-body::-webkit-scrollbar-thumb {
+  border: 2px solid var(--edge-surface);
+  border-radius: 4px;
+  background: var(--edge-line-strong);
+}
+
+/* Keep the closing footnote clear of the floating AI launcher. */
+.edge-scanner-detail .detail-body,
+.edge-scanner-mobile-detail .detail-body {
+  padding-bottom: 56px;
+}
