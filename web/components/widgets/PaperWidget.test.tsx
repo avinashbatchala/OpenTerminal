@@ -180,7 +180,7 @@ describe("paper trading widget", () => {
 
     expect(await screen.findByText("$99,997.20")).toBeInTheDocument();
     expect(screen.getByText("AAPL")).toBeInTheDocument();
-    expect(screen.getByText(/-?\$20\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/-\$20\.80/)).toBeInTheDocument();
 
     await userEvent.setup().click(screen.getByRole("button", { name: /history/i }));
     const closedRow = await screen.findByRole("button", { name: /MSFT/ });

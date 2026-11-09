@@ -166,6 +166,7 @@ describe("execution persistence", () => {
     expect(store.insertFills(fills)).toBe(1);
     expect(store.insertFills(fills)).toBe(0);
     expect(store.listFills(trade.id)).toHaveLength(1);
+    expect(store.listAllFills()).toHaveLength(1);
 
     expect(
       store.appendEvent({
@@ -268,6 +269,15 @@ describe("execution persistence", () => {
       equityUsd: 100_000,
     });
     expect(store.equityHistory()).toHaveLength(1);
+
+    store.recordEquity({
+      asOf: "2026-11-09T15:10:00.000Z",
+      cashUsd: 100_000,
+      positionsUsd: 91,
+      equityUsd: 100_091,
+    });
+    expect(store.deleteResetEquitySnapshots(100_000)).toBe(1);
+    expect(store.latestEquity()?.equityUsd).toBe(100_000);
 
     expect(store.acquireLease("one", 30_000)).toBe(true);
     store.clearLease();

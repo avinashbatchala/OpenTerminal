@@ -178,7 +178,8 @@ export function entryPremiumUsd(trade: ExecutionTrade): number | null {
 export function unrealizedUsd(trade: ExecutionTrade, mark: ExecutionMark | null): number | null {
   const entry = entryPremiumUsd(trade);
   if (entry === null || !mark) return null;
-  return mark.liquidationValueUsd - entry;
+  // Net of entry fees so open P&L and Realized P&L both reconcile to equity.
+  return mark.liquidationValueUsd - entry - (trade.entrySummary?.feesUsd ?? 0);
 }
 
 /** Day change from the first equity snapshot of the current local day. */

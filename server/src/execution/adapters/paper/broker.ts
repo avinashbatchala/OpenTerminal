@@ -32,11 +32,25 @@ export type PaperFillProvider = (
   at: Date
 ) => Result<ModeledFill, FillModelError> | Promise<Result<ModeledFill, FillModelError>>;
 
+export type PaperSeedFill = {
+  contractSymbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  price: number;
+  multiplier: number;
+  feesUsd: number;
+};
+
 export type PaperBrokerOptions = {
   fill: PaperFillProvider;
   now?: () => Date;
   startingCashUsd?: number;
   idFactory?: () => string;
+  /**
+   * Fills persisted before this process started. The in-memory broker is
+   * rebuilt from them so cash, positions and equity survive API restarts.
+   */
+  seedFills?: readonly PaperSeedFill[];
 };
 
 const CAPABILITIES: BrokerCapabilities = {
@@ -260,6 +274,24 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
       let cash = options.startingCashUsd ?? 100_000;
       const openOrders: BrokerOpenOrder[] = [];
 
+      const applyFill = (fill: PaperSeedFill) => {
+        const sign = fill.side === "buy" ? 1 : -1;
+        cash -= sign * fill.price * fill.quantity * fill.multiplier;
+        cash -= fill.feesUsd;
+
+        const current = positions.get(fill.contractSymbol) ?? {
+          quantity: 0,
+          notional: 0,
+          multiplier: fill.multiplier,
+        };
+        current.quantity += sign * fill.quantity;
+        current.notional += fill.price * fill.quantity;
+        current.multiplier = fill.multiplier;
+        positions.set(fill.contractSymbol, current);
+      };
+
+      for (const fill of options.seedFills ?? []) applyFill(fill);
+
       for (const entry of orders.values()) {
         const state = entry.state;
         if (state.status === "acknowledged" || state.status === "partially_filled") {
@@ -270,19 +302,14 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
           });
         }
         for (const fill of fillsOf(state)) {
-          const sign = fill.side === "buy" ? 1 : -1;
-          cash -= sign * fill.price * fill.quantity * fill.multiplier;
-          cash -= fill.feesUsd;
-
-          const current = positions.get(fill.contractSymbol) ?? {
-            quantity: 0,
-            notional: 0,
+          applyFill({
+            contractSymbol: fill.contractSymbol,
+            side: fill.side,
+            quantity: fill.quantity,
+            price: fill.price,
             multiplier: fill.multiplier,
-          };
-          current.quantity += sign * fill.quantity;
-          current.notional += fill.price * fill.quantity;
-          current.multiplier = fill.multiplier;
-          positions.set(fill.contractSymbol, current);
+            feesUsd: fill.feesUsd,
+          });
         }
       }
 

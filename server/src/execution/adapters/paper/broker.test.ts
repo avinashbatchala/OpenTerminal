@@ -98,4 +98,29 @@ describe("paper broker specifics", () => {
     const cancelled = await broker.cancel(result.value.brokerOrderId);
     expect(cancelled.ok).toBe(false);
   });
+
+  it("rebuilds cash and positions from persisted fills", async () => {
+    const broker = createPaperBroker({
+      fill: () => ({ ok: false, error: { kind: "missing_quote", contractSymbol: CONTRACT } }),
+      now: () => NOW,
+      startingCashUsd: 10_000,
+      seedFills: [
+        {
+          contractSymbol: CONTRACT,
+          side: "buy",
+          quantity: 1,
+          price: 1.2,
+          multiplier: 100,
+          feesUsd: 0.8,
+        },
+      ],
+    });
+
+    const snapshot = await broker.snapshot();
+    if (!snapshot.ok) throw new Error("snapshot failed");
+    expect(snapshot.value.cashUsd).toBe(9_879.2);
+    expect(snapshot.value.positions).toEqual([
+      { contractSymbol: CONTRACT, quantity: 1, averagePrice: 1.2, multiplier: 100 },
+    ]);
+  });
 });

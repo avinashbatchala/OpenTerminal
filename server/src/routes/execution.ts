@@ -65,10 +65,23 @@ async function fillProvider(request: BrokerOrderRequest, at: Date) {
 }
 
 const initialConfig = executionStore.getConfig();
+// The paper broker is in-memory; rebuild its ledger from persisted fills so
+// cash, positions and equity are continuous across API restarts.
+const seedFills = executionStore.listAllFills().map((fill) => ({
+  contractSymbol: fill.contractSymbol,
+  side: fill.side,
+  quantity: fill.quantity,
+  price: fill.price,
+  multiplier: fill.multiplier,
+  feesUsd: fill.feesUsd,
+}));
 const broker = createPaperBroker({
   fill: fillProvider,
   startingCashUsd: initialConfig.startingCashUsd,
+  seedFills,
 });
+// Drop equity points recorded while a previous process had lost its ledger.
+executionStore.deleteResetEquitySnapshots(initialConfig.startingCashUsd);
 
 export const executionEngine = new ExecutionEngine({
   store: executionStore,

@@ -516,6 +516,12 @@ export class ExecutionStore {
       .all(tradeId) as any[]).map(mapFill);
   }
 
+  listAllFills(): ExecutionFill[] {
+    return (this.database
+      .prepare("SELECT * FROM execution_fills ORDER BY filled_at, fill_id")
+      .all() as any[]).map(mapFill);
+  }
+
   listOrderFills(clientOrderId: string): ExecutionFill[] {
     return (this.database
       .prepare("SELECT * FROM execution_fills WHERE client_order_id = ? ORDER BY filled_at, fill_id")
@@ -570,6 +576,20 @@ export class ExecutionStore {
       liquidationValueUsd: row.liquidation_value_usd,
       underlyingPrice: row.underlying_price ?? null,
     }));
+  }
+
+  /**
+   * Remove snapshots produced while the in-memory paper broker had reset
+   * (cash == starting cash but positions still marked). Safe: cash can only
+   * equal the starting balance with non-zero positions if the ledger was lost.
+   */
+  deleteResetEquitySnapshots(startingCashUsd: number): number {
+    const result = this.database
+      .prepare(
+        "DELETE FROM execution_equity WHERE ABS(cash_usd - ?) < 0.005 AND positions_usd > 0"
+      )
+      .run(startingCashUsd);
+    return result.changes;
   }
 
   recordEquity(snapshot: EquitySnapshot): void {
