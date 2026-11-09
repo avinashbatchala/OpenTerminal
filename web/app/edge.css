@@ -2713,3 +2713,237 @@ table.data-table tbody tr:focus-within .watchlist-remove,
 .edge-scanner-mobile-detail .detail-body {
   padding-bottom: 56px;
 }
+
+/* Inspector readability: the detail rail carries long explanations, so it
+   runs a larger scale than the dense queue. Tuned for 14-inch laptops. */
+.edge-scanner-main {
+  grid-template-columns: minmax(0, 1fr) 500px;
+}
+
+.edge-scanner-detail .detail-body,
+.edge-scanner-mobile-detail .detail-body {
+  gap: 12px;
+  padding: 12px 16px 64px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.edge-scanner-detail .detail-head,
+.edge-scanner-mobile-detail .detail-head {
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.edge-scanner-detail .detail-head h2,
+.edge-scanner-mobile-detail .detail-head h2 {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.edge-scanner-detail .detail-head .dim,
+.edge-scanner-mobile-detail .detail-head .dim {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.edge-scanner-detail .detail-head .term-btn,
+.edge-scanner-mobile-detail .detail-head .term-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.edge-scanner-detail .scanner-badge,
+.edge-scanner-mobile-detail .scanner-badge {
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.edge-scanner-detail .action-card,
+.edge-scanner-mobile-detail .action-card {
+  padding: 12px 16px;
+}
+
+.edge-scanner-detail .action-kicker,
+.edge-scanner-mobile-detail .action-kicker,
+.edge-scanner-detail .kicker,
+.edge-scanner-mobile-detail .kicker {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.edge-scanner-detail .action-directive,
+.edge-scanner-mobile-detail .action-directive {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.edge-scanner-detail .action-detail,
+.edge-scanner-mobile-detail .action-detail {
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.edge-scanner-detail .action-deadline-value,
+.edge-scanner-mobile-detail .action-deadline-value {
+  font-size: 15px;
+}
+
+.edge-scanner-detail .action-meta,
+.edge-scanner-mobile-detail .action-meta {
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.edge-scanner-detail .level-tile,
+.edge-scanner-mobile-detail .level-tile {
+  padding: 12px;
+}
+
+.edge-scanner-detail .level-label,
+.edge-scanner-mobile-detail .level-label {
+  font-size: 12px;
+}
+
+.edge-scanner-detail .level-value,
+.edge-scanner-mobile-detail .level-value {
+  font-size: 20px;
+}
+
+.edge-scanner-detail .level-hint,
+.edge-scanner-mobile-detail .level-hint {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.edge-scanner-detail .detail-section-head,
+.edge-scanner-mobile-detail .detail-section-head {
+  padding: 12px;
+}
+
+.edge-scanner-detail .detail-section-title,
+.edge-scanner-mobile-detail .detail-section-title,
+.edge-scanner-detail .detail-section-hint,
+.edge-scanner-mobile-detail .detail-section-hint {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.edge-scanner-detail .detail-section-body,
+.edge-scanner-mobile-detail .detail-section-body {
+  gap: 12px;
+  padding: 12px;
+}
+
+.edge-scanner-detail .detail-thesis,
+.edge-scanner-mobile-detail .detail-thesis {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.edge-scanner-detail .signal-item dt,
+.edge-scanner-mobile-detail .signal-item dt,
+.edge-scanner-detail .detail-fact dt,
+.edge-scanner-mobile-detail .detail-fact dt {
+  font-size: 10.5px;
+}
+
+.edge-scanner-detail .signal-item dd,
+.edge-scanner-mobile-detail .signal-item dd {
+  font-size: 13.5px;
+}
+
+.edge-scanner-detail .detail-fact dd,
+.edge-scanner-mobile-detail .detail-fact dd {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.edge-scanner-detail .trade-summary-item,
+.edge-scanner-mobile-detail .trade-summary-item {
+  gap: 4px;
+  padding: 8px 12px;
+}
+
+.edge-scanner-detail .trade-summary-value,
+.edge-scanner-mobile-detail .trade-summary-value {
+  font-size: 15px;
+}
+
+.edge-scanner-detail .trade-summary .kicker,
+.edge-scanner-mobile-detail .trade-summary .kicker {
+  font-size: 10.5px;
+}
+
+.edge-scanner-detail .trade-summary .dim,
+.edge-scanner-mobile-detail .trade-summary .dim {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.edge-scanner-detail .scanner-summary,
+.edge-scanner-mobile-detail .scanner-summary {
+  padding: 12px;
+  font-size: 12.5px;
+}
+
+.edge-scanner-detail .insight-heading,
+.edge-scanner-mobile-detail .insight-heading {
+  font-size: 11px;
+}
+
+.edge-scanner-detail .insight-list,
+.edge-scanner-mobile-detail .insight-list {
+  gap: 8px;
+}
+
+.edge-scanner-detail .insight-list li,
+.edge-scanner-mobile-detail .insight-list li {
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.edge-scanner-detail .detail-disclosure-body,
+.edge-scanner-mobile-detail .detail-disclosure-body {
+  gap: 12px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.edge-scanner-detail .detail-footnote,
+.edge-scanner-mobile-detail .detail-footnote {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.edge-scanner-detail .detail-empty,
+.edge-scanner-mobile-detail .detail-empty {
+  font-size: 13px;
+}
+
+@media (max-width: 1439px) {
+  .edge-scanner-main {
+    grid-template-columns: minmax(0, 1fr) 460px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .edge-scanner-main {
+    grid-template-columns: minmax(0, 1fr) 420px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .edge-scanner-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
