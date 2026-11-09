@@ -20,7 +20,8 @@ import OpportunityDetail from "./OpportunityDetail";
 import ScannerOverlay from "./ScannerOverlay";
 import ScannerSettings from "./ScannerSettings";
 import { PageHeader, Surface } from "../shell/Surface";
-import Tag, { type TagTone } from "../ui/Tag";
+import Tag from "../ui/Tag";
+import DirectionTag from "../ui/DirectionTag";
 
 const ACTIVE_STATES = new Set(["watching", "entry_ready"]);
 const HORIZONS: Horizon[] = ["intraday", "swing"];
@@ -33,14 +34,6 @@ const STATE_RANK: Record<string, number> = {
 };
 
 type View = "active" | "history";
-
-function directionTone(direction: string): TagTone {
-  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "neutral";
-}
-
-function directionLabel(direction: string): string {
-  return direction.charAt(0).toUpperCase() + direction.slice(1);
-}
 
 function scanTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -387,9 +380,7 @@ export default function ScannerPage() {
                     <span className="edge-scanner-row-main">
                       <span className="edge-scanner-row-top">
                         <span className="edge-scanner-symbol">{opportunity.symbol}</span>
-                        <Tag tone={directionTone(opportunity.direction)}>
-                          {directionLabel(opportunity.direction)}
-                        </Tag>
+                        <DirectionTag direction={opportunity.direction} />
                         <StateBadge state={opportunity.state} />
                         {opportunity.currentHealth !== "current" && (
                           <HealthBadge health={opportunity.currentHealth} />

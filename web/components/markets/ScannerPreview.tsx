@@ -4,15 +4,8 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../lib/api";
 import { STRATEGY_LABELS, formatUsd, type Opportunity } from "../../lib/scanner";
-import Tag, { type TagTone } from "../ui/Tag";
-
-function directionTone(direction: Opportunity["direction"]): TagTone {
-  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "neutral";
-}
-
-function directionLabel(direction: Opportunity["direction"]): string {
-  return direction === "bullish" ? "Bullish" : direction === "bearish" ? "Bearish" : "Neutral";
-}
+import Tag from "../ui/Tag";
+import DirectionTag from "../ui/DirectionTag";
 
 export default function ScannerPreview() {
   const { data = [], isLoading } = useQuery({
@@ -67,9 +60,7 @@ export default function ScannerPreview() {
                     <Tag tone={opportunity.state === "entry_ready" ? "up" : "neutral"}>
                       {opportunity.state === "entry_ready" ? "Entry ready" : "Watching"}
                     </Tag>
-                    <Tag tone={directionTone(opportunity.direction)}>
-                      {directionLabel(opportunity.direction)}
-                    </Tag>
+                    <DirectionTag direction={opportunity.direction} />
                   </span>
                   <span className="edge-setup-meta">
                     {STRATEGY_LABELS[opportunity.strategy as keyof typeof STRATEGY_LABELS] ??

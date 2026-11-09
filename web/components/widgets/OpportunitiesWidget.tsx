@@ -19,7 +19,8 @@ import { HealthBadge, StateBadge } from "../scanner/StatusBadges";
 import OpportunityDetail from "../scanner/OpportunityDetail";
 import ScannerOverlay from "../scanner/ScannerOverlay";
 import ScannerSettings from "../scanner/ScannerSettings";
-import Tag, { type TagTone } from "../ui/Tag";
+import Tag from "../ui/Tag";
+import DirectionTag from "../ui/DirectionTag";
 
 const ACTIVE_STATES = new Set(["watching", "entry_ready"]);
 const HORIZONS: Horizon[] = ["intraday", "swing"];
@@ -32,14 +33,6 @@ const STATE_RANK: Record<string, number> = {
 };
 
 type View = "active" | "all";
-
-function directionTone(direction: string): TagTone {
-  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "neutral";
-}
-
-function directionLabel(direction: string): string {
-  return direction.charAt(0).toUpperCase() + direction.slice(1);
-}
 
 export default function OpportunitiesWidget() {
   const queryClient = useQueryClient();
@@ -299,9 +292,7 @@ export default function OpportunitiesWidget() {
                 <span className="opps-main">
                   <span className="opps-top">
                     <span className="opps-symbol">{opportunity.symbol}</span>
-                    <Tag tone={directionTone(opportunity.direction)}>
-                      {directionLabel(opportunity.direction)}
-                    </Tag>
+                    <DirectionTag direction={opportunity.direction} />
                     <StateBadge state={opportunity.state} />
                     {opportunity.currentHealth !== "current" && (
                       <HealthBadge health={opportunity.currentHealth} />

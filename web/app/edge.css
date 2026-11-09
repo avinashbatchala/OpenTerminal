@@ -2990,3 +2990,9 @@ table.data-table tbody tr:focus-within .watchlist-remove,
   --tag-line: var(--edge-accent-line);
   --tag-fill: var(--edge-accent-soft);
 }
+
+.tag-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
