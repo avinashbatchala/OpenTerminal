@@ -1,8 +1,8 @@
 # Paper trading execution architecture
 
-Status: **P0 + P1 implemented** (broker port, order lifecycle, paper fill model,
-contract tests, SQLite store, execution engine, manual enter/close API).
-Automation, marks/equity and UI follow in later phases.
+Status: **P0 + P1 + P2 implemented** (broker port, order lifecycle, paper fill
+model, contract tests, SQLite store, execution engine, manual enter/close API,
+automation scheduler, exit rules, marks and equity). UI follows in P3.
 
 ## Invariant
 
@@ -75,18 +75,47 @@ as a percentage of mid. A live broker and the paper model produce the same
   summaries. Rejections leave the trade open (exit) or mark it rejected
   (entry), with an append-only event.
 
-## API (P1)
+## Automation (P2)
+
+`ExecutionScheduler` ticks every 30s during a verified regular session and calls
+`ExecutionEngine.automate()`. The engine owns the lease; the scheduler only owns
+cadence and session eligibility. A tick runs:
+
+1. **Exits** (when `automation.exits`): for each open trade, fetch the current
+   package close price and the scanner setup state, then evaluate, in order:
+   invalidation/missed/expired → profit target → stop loss → deadline → time
+   stop. A missing close quote does not invent a fill; the trade is marked
+   `exit_unable` and retried next tick.
+2. **Entries** (when `automation.entries`): scan `entry_ready` setups in order,
+   skipping ones already traded and respecting open/per-symbol limits.
+3. **Marks**: liquidation value per open trade (`-closeNet × multiplier`) and
+   an equity snapshot (`cash + positions`) in `execution_marks` /
+   `execution_equity`.
+
+Defaults: automation entries **off**, exits on, 50% profit target, 1× stop,
+no time stop, full-spread fills with a 50% slippage cap (cheap options have wide
+relative spreads).
+
+Restart recovery clears the execution lease and cancels `pending_entry` /
+`pending_exit` paper trades, because the in-memory paper broker cannot resume
+orders. A live adapter will reconcile with `BrokerPort.snapshot()` instead.
+
+## API (P1 + P2)
 
 All routes are authenticated (`x-api-key`) under `/api/execution`:
 
-- `GET /status` — config, trade counts, open trades, broker cash/positions.
+- `GET /status` — config, trade counts, open trades, latest equity, broker
+  cash/positions.
 - `GET /trades?status=&limit=` — recent trades.
 - `GET /trades/:id` — trade, orders, fills and events.
 - `POST /enter` `{ opportunityId }` — manual simulated entry (`201` open,
   `202` pending).
 - `POST /trades/:id/close` — manual simulated exit.
+- `PUT /config` — zod-validated automation, exit, slippage, fee and limit
+  settings; automation stays inert until `enabled` is true.
+- `GET /equity?limit=` — latest and historical equity snapshots.
 
-No automation runs yet; the scheduler, exit policies and UI are P2+.
+The UI is P3.
 
 ## Adding a live broker
 

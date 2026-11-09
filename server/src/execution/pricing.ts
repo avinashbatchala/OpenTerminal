@@ -28,10 +28,9 @@ export function quotesFromChain(chain: NormalizedChain): Map<string, FillModelQu
  * adverse buffer. The signed result is positive for a debit and negative for a
  * credit, matching `FillSummary.netPricePerShare` and the broker limit check.
  */
-export function packageLimitPrice(
+export function packageTouchPrice(
   legs: readonly ScannerLeg[],
-  quotes: ReadonlyMap<string, FillModelQuote>,
-  bufferPct: number
+  quotes: ReadonlyMap<string, FillModelQuote>
 ): Result<number, PricingError> {
   if (legs.length === 0) {
     return err({ kind: "missing_quote", contractSymbol: "none" });
@@ -55,7 +54,17 @@ export function packageLimitPrice(
     net += sign * price * leg.quantity;
   }
 
+  return ok(roundPrice(net));
+}
+
+export function packageLimitPrice(
+  legs: readonly ScannerLeg[],
+  quotes: ReadonlyMap<string, FillModelQuote>,
+  bufferPct: number
+): Result<number, PricingError> {
+  const touch = packageTouchPrice(legs, quotes);
+  if (!touch.ok) return touch;
+  const net = touch.value;
   const buffer = Math.max(0, bufferPct) / 100;
-  const limit = net + Math.abs(net) * buffer;
-  return ok(roundPrice(limit));
+  return ok(roundPrice(net + Math.abs(net) * buffer));
 }

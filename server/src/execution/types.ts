@@ -63,6 +63,20 @@ export type ExecutionFill = {
   filledAt: string;
 };
 
+export type ExecutionMark = {
+  tradeId: string;
+  markedAt: string;
+  liquidationValueUsd: number;
+  underlyingPrice: number | null;
+};
+
+export type EquitySnapshot = {
+  asOf: string;
+  cashUsd: number;
+  positionsUsd: number;
+  equityUsd: number;
+};
+
 export type ExecutionEvent = {
   id: number;
   tradeId: string | null;
@@ -86,13 +100,22 @@ export type ExecutionResult<T> = Result<T, ExecutionError>;
 
 export type SetupSource = {
   find(opportunityId: string): OpportunityRecord | null;
+  listEntryReady(): OpportunityRecord[];
 };
 
 export type ExecutionStatus = {
   config: ExecutionConfig;
   counts: Record<ExecutionTradeStatus, number>;
   openTrades: ExecutionTrade[];
+  equity: EquitySnapshot | null;
   broker:
     | { ok: true; cashUsd: number; positions: readonly BrokerPosition[] }
     | { ok: false; error: BrokerError };
+};
+
+export type AutomationOutcome = {
+  status: "disabled" | "overlap" | "completed";
+  exits?: number;
+  entries?: number;
+  marks?: number;
 };

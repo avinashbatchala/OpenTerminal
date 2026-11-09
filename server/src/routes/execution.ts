@@ -1,8 +1,11 @@
 import { Router, type Response } from "express";
+import { z } from "zod";
 import { db } from "../db.js";
 import { createPaperBroker } from "../execution/adapters/paper/broker.js";
 import { modelFill, type FillModelQuote } from "../execution/adapters/paper/fillModel.js";
 import { ExecutionEngine } from "../execution/engine.js";
+import { ExecutionScheduler } from "../execution/scheduler.js";
+import { normalizeExecutionConfig } from "../execution/config.js";
 import { quotesFromChain } from "../execution/pricing.js";
 import { createExecutionStore } from "../execution/store.js";
 import type { ExecutionError, ExecutionTradeStatus } from "../execution/types.js";
@@ -73,10 +76,63 @@ export const executionEngine = new ExecutionEngine({
   market,
   setups: {
     find: (opportunityId) => scannerStoreSingleton.findById(opportunityId),
+    listEntryReady: () =>
+      scannerStoreSingleton.listOpportunities({ state: "entry_ready", limit: 50 }),
   },
 });
 
+export const executionScheduler = new ExecutionScheduler(executionEngine, executionStore);
+
 export const executionRouter = Router();
+
+const AutomationPatch = z
+  .object({ entries: z.boolean().optional(), exits: z.boolean().optional() })
+  .strict();
+const ExitsPatch = z
+  .object({
+    profitTargetFraction: z.number().min(0.05).max(2).optional(),
+    stopLossFraction: z.number().min(0.1).max(5).optional(),
+    timeStopMinutes: z.number().int().min(1).nullable().optional(),
+  })
+  .strict();
+const SlippagePatch = z
+  .object({
+    spreadFactor: z.number().min(0).max(2).optional(),
+    impactBps: z.number().min(0).max(500).optional(),
+    jitterBps: z.number().min(0).max(100).optional(),
+    maxSlippagePct: z.number().min(0.01).max(100).optional(),
+  })
+  .strict();
+const QuotesPatch = z
+  .object({
+    maxQuoteAgeMs: z.number().int().min(1_000).optional(),
+    limitBufferPct: z.number().min(0).max(10).optional(),
+  })
+  .strict();
+const FeesPatch = z
+  .object({
+    perOrderUsd: z.number().min(0).max(100).optional(),
+    perContractUsd: z.number().min(0).max(100).optional(),
+  })
+  .strict();
+const LimitsPatch = z
+  .object({
+    maxOpenTrades: z.number().int().min(1).max(100).optional(),
+    maxPerSymbol: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+const ConfigPatch = z
+  .object({
+    enabled: z.boolean().optional(),
+    automation: AutomationPatch.optional(),
+    exits: ExitsPatch.optional(),
+    slippage: SlippagePatch.optional(),
+    quotes: QuotesPatch.optional(),
+    fees: FeesPatch.optional(),
+    limits: LimitsPatch.optional(),
+  })
+  .strict();
 
 const TRADE_STATUSES: ReadonlySet<string> = new Set<ExecutionTradeStatus>([
   "pending_entry",
@@ -119,6 +175,42 @@ executionRouter.get("/status", async (_req, res) => {
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
+});
+
+executionRouter.put("/config", (req, res) => {
+  const parsed = ConfigPatch.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "config"}: ${issue.message}`)
+        .join("; "),
+    });
+  }
+
+  const current = executionStore.getConfig();
+  const patch = parsed.data;
+  const merged = normalizeExecutionConfig(
+    {
+      ...current,
+      ...patch,
+      automation: { ...current.automation, ...patch.automation },
+      exits: { ...current.exits, ...patch.exits },
+      slippage: { ...current.slippage, ...patch.slippage },
+      quotes: { ...current.quotes, ...patch.quotes },
+      fees: { ...current.fees, ...patch.fees },
+      limits: { ...current.limits, ...patch.limits },
+    },
+    current
+  );
+  res.json({ config: executionStore.saveConfig(merged) });
+});
+
+executionRouter.get("/equity", (req, res) => {
+  const limit = Math.min(1_000, Math.max(1, Number(req.query.limit) || 200));
+  res.json({
+    latest: executionStore.latestEquity(),
+    history: executionStore.equityHistory(limit),
+  });
 });
 
 executionRouter.get("/trades", (req, res) => {

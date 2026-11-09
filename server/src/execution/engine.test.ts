@@ -5,6 +5,7 @@ import type { OpportunityRecord, ScannerLeg } from "../scanner/types.js";
 import { createPaperBroker } from "./adapters/paper/broker.js";
 import { modelFill, type FillModelConfig } from "./adapters/paper/fillModel.js";
 import { ExecutionEngine } from "./engine.js";
+import { asClientOrderId } from "./ports/broker.js";
 import { createExecutionStore, type ExecutionStore } from "./store.js";
 
 const CONTRACT = "AAPL261120C00100000";
@@ -24,6 +25,7 @@ let db: Database.Database;
 let store: ExecutionStore;
 let engine: ExecutionEngine;
 let setup: OpportunityRecord;
+let entryCandidates: OpportunityRecord[];
 let ask: number;
 
 function leg(askPrice: number): ScannerLeg {
@@ -194,7 +196,10 @@ function buildEngine() {
     store,
     broker,
     market,
-    setups: { find: (id) => (id === setup.id ? setup : null) },
+    setups: {
+      find: (id) => (id === setup.id ? setup : null),
+      listEntryReady: () => entryCandidates,
+    },
     now: () => NOW,
   });
 }
@@ -204,6 +209,7 @@ beforeEach(() => {
   store = createExecutionStore(db);
   ask = 1.2;
   setup = opportunity();
+  entryCandidates = [];
   engine = buildEngine();
 });
 
@@ -261,7 +267,10 @@ describe("execution engine", () => {
       store,
       broker,
       market,
-      setups: { find: (id) => (id === setup.id ? setup : null) },
+      setups: {
+      find: (id) => (id === setup.id ? setup : null),
+      listEntryReady: () => entryCandidates,
+    },
       now: () => NOW,
     });
 
@@ -301,6 +310,107 @@ describe("execution engine", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.kind).toBe("busy");
+    store.releaseLease("other");
+  });
+});
+
+describe("execution automation", () => {
+  function enable(overrides: Record<string, unknown> = {}) {
+    const current = store.getConfig();
+    store.saveConfig({
+      ...current,
+      enabled: true,
+      automation: { entries: false, exits: false },
+      ...overrides,
+    } as typeof current);
+  }
+
+  it("enters entry-ready setups when automation entries are enabled", async () => {
+    enable({ automation: { entries: true, exits: false } });
+    entryCandidates = [setup];
+
+    const outcome = await engine.automate(NOW);
+
+    expect(outcome.status).toBe("completed");
+    expect(outcome.entries).toBe(1);
+    expect(store.listOpenTrades()).toHaveLength(1);
+  });
+
+  it("exits on the package profit target", async () => {
+    const entered = await engine.enter(setup.id);
+    if (!entered.ok) throw new Error("enter failed");
+    ask = 2;
+
+    enable({
+      automation: { entries: false, exits: true },
+      exits: { profitTargetFraction: 0.5, stopLossFraction: 1, timeStopMinutes: null },
+    });
+    const outcome = await engine.automate(NOW);
+
+    expect(outcome.exits).toBe(1);
+    const detail = engine.getTrade(entered.value.id)!;
+    expect(detail.trade.status).toBe("closed");
+    expect(detail.trade.pnl?.grossUsd).toBeCloseTo(60);
+    const requested = detail.events.find((event) => event.type === "exit_requested");
+    expect(requested?.payload.reason).toMatchObject({ kind: "profit_target" });
+  });
+
+  it("marks open trades and records equity", async () => {
+    const entered = await engine.enter(setup.id);
+    if (!entered.ok) throw new Error("enter failed");
+    enable();
+
+    const outcome = await engine.automate(NOW);
+
+    expect(outcome.marks).toBe(1);
+    const marks = store.listMarks(entered.value.id);
+    expect(marks).toHaveLength(1);
+    expect(marks[0].liquidationValueUsd).toBeCloseTo(100);
+    const equity = store.latestEquity();
+    expect(equity?.positionsUsd).toBeCloseTo(100);
+    expect(equity?.equityUsd).toBeCloseTo(99_979.2);
+  });
+
+  it("cancels pending paper trades on recovery and clears the lease", async () => {
+    const trade = store.createTrade({
+      id: "recover-1",
+      opportunityId: "opp-recover",
+      identityKey: "identity-recover",
+      symbol: "AAPL",
+      horizon: "swing",
+      strategy: "long_call",
+      setup: opportunity({ id: "opp-recover", identityKey: "identity-recover" }),
+    });
+    store.createOrder({
+      clientOrderId: "recover-1:entry",
+      tradeId: trade.id,
+      intent: "entry",
+      request: {
+        clientOrderId: asClientOrderId("recover-1:entry"),
+        intent: "open",
+        assetClass: "option",
+        instrument: { underlying: "AAPL", expiry: EXPIRY },
+        legs: [{ contractSymbol: CONTRACT, side: "buy", quantity: 1 }],
+        orderType: "limit",
+        netLimitPrice: 1.2,
+        timeInForce: "day",
+      },
+    });
+    expect(store.acquireLease("other", 30_000)).toBe(true);
+
+    expect(engine.recover(NOW)).toBe(1);
+
+    expect(store.findTrade(trade.id)?.status).toBe("cancelled");
+    expect(store.acquireLease("fresh", 30_000)).toBe(true);
+    expect(engine.getTrade(trade.id)?.events.some((event) => event.type === "recovered_after_restart")).toBe(true);
+  });
+
+  it("does nothing while disabled or while the lease is held", async () => {
+    expect((await engine.automate(NOW)).status).toBe("disabled");
+
+    enable();
+    expect(store.acquireLease("other", 30_000)).toBe(true);
+    expect((await engine.automate(NOW)).status).toBe("overlap");
     store.releaseLease("other");
   });
 });

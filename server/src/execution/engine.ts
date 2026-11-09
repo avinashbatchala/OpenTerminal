@@ -14,9 +14,11 @@ import { roundMoney } from "./domain/fill.js";
 import { legSlippage, summarizeLegFills, type LegFill } from "./domain/fill.js";
 import { applyBrokerUpdate, type OrderState } from "./domain/order.js";
 import { computeTradePnl } from "./domain/pnl.js";
-import { packageLimitPrice, quotesFromChain } from "./pricing.js";
+import { evaluateExit, type ExitReason } from "./exits.js";
+import { packageLimitPrice, packageTouchPrice, quotesFromChain } from "./pricing.js";
 import type { ExecutionStore } from "./store.js";
 import type {
+  AutomationOutcome,
   ExecutionError,
   ExecutionResult,
   ExecutionStatus,
@@ -80,6 +82,7 @@ export class ExecutionEngine {
   private readonly now: () => Date;
   private readonly logger: (message: string) => void;
   private readonly unsubscribe: () => void;
+  private readonly exitReasons = new Map<string, ExitReason>();
 
   constructor(options: ExecutionEngineOptions) {
     this.store = options.store;
@@ -95,16 +98,20 @@ export class ExecutionEngine {
     this.unsubscribe();
   }
 
-  /**
-   * Manual paper entry. The scanner lifecycle must already be `entry_ready`;
-   * the same pipeline will drive automated entries in a later phase.
-   */
+  /** Manual paper entry; automation uses the same locked pipeline. */
   async enter(opportunityId: string): Promise<ExecutionResult<ExecutionTrade>> {
     const owner = this.store.newOwner();
     if (!this.store.acquireLease(owner, LEASE_MS)) {
       return err({ kind: "busy", message: "Another execution operation is in progress" });
     }
+    try {
+      return await this.enterLocked(opportunityId);
+    } finally {
+      this.store.releaseLease(owner);
+    }
+  }
 
+  private async enterLocked(opportunityId: string): Promise<ExecutionResult<ExecutionTrade>> {
     try {
       const setup = this.setups.find(opportunityId);
       if (!setup) return err({ kind: "not_found", message: "Opportunity not found" });
@@ -177,17 +184,28 @@ export class ExecutionEngine {
         kind: "internal",
         message: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  async close(
+    tradeId: string,
+    reason: ExitReason = { kind: "manual", actor: "user" }
+  ): Promise<ExecutionResult<ExecutionTrade>> {
+    const owner = this.store.newOwner();
+    if (!this.store.acquireLease(owner, LEASE_MS)) {
+      return err({ kind: "busy", message: "Another execution operation is in progress" });
+    }
+    try {
+      return await this.closeLocked(tradeId, reason);
     } finally {
       this.store.releaseLease(owner);
     }
   }
 
-  async close(tradeId: string): Promise<ExecutionResult<ExecutionTrade>> {
-    const owner = this.store.newOwner();
-    if (!this.store.acquireLease(owner, LEASE_MS)) {
-      return err({ kind: "busy", message: "Another execution operation is in progress" });
-    }
-
+  private async closeLocked(
+    tradeId: string,
+    reason: ExitReason
+  ): Promise<ExecutionResult<ExecutionTrade>> {
     try {
       const trade = this.store.findTrade(tradeId);
       if (!trade) return err({ kind: "not_found", message: "Trade not found" });
@@ -206,6 +224,8 @@ export class ExecutionEngine {
       const clientOrderId = asClientOrderId(`${tradeId}:exit:${randomUUID().slice(0, 8)}`);
       const priced = await this.priceRequest(trade.setup, exitLegs, "close", config, clientOrderId);
       if (!priced.ok) return priced;
+
+      this.exitReasons.set(clientOrderId, reason);
       this.store.createOrder({
         clientOrderId,
         tradeId,
@@ -213,9 +233,17 @@ export class ExecutionEngine {
         request: priced.value,
       });
       this.store.updateTrade(tradeId, { status: "pending_exit", exitOrderId: clientOrderId });
+      this.store.appendEvent({
+        tradeId,
+        type: "exit_requested",
+        dedupeKey: `exit:${tradeId}:${clientOrderId}`,
+        payload: { reason },
+        createdAt: this.now().toISOString(),
+      });
 
       const submitted = await this.broker.submit(priced.value);
       if (!submitted.ok) {
+        this.exitReasons.delete(clientOrderId);
         this.failExit(tradeId, clientOrderId, submitted.error);
         return err({ kind: "broker", error: submitted.error });
       }
@@ -231,8 +259,6 @@ export class ExecutionEngine {
         kind: "internal",
         message: error instanceof Error ? error.message : String(error),
       });
-    } finally {
-      this.store.releaseLease(owner);
     }
   }
 
@@ -247,6 +273,7 @@ export class ExecutionEngine {
       trade,
       orders: this.store.listOrders(tradeId),
       fills: this.store.listFills(tradeId),
+      marks: this.store.listMarks(tradeId),
       events: this.store.listEvents(tradeId),
     };
   }
@@ -257,10 +284,186 @@ export class ExecutionEngine {
       config: this.store.getConfig(),
       counts: this.store.counts(),
       openTrades: this.store.listOpenTrades(),
+      equity: this.store.latestEquity(),
       broker: snapshot.ok
         ? { ok: true, cashUsd: snapshot.value.cashUsd, positions: snapshot.value.positions }
         : { ok: false, error: snapshot.error },
     };
+  }
+
+  /**
+   * One automation pass: exits first (to free slots), then entries, then marks.
+   * The scheduler owns session and cadence; this method owns the lease.
+   */
+  async automate(now = this.now()): Promise<AutomationOutcome> {
+    const config = this.store.getConfig();
+    if (!config.enabled) return { status: "disabled" };
+
+    const owner = this.store.newOwner();
+    if (!this.store.acquireLease(owner, 120_000)) return { status: "overlap" };
+
+    try {
+      let exits = 0;
+      let entries = 0;
+      if (config.automation.exits) exits = await this.runExits(now, config);
+      if (config.automation.entries) entries = await this.runEntries(config);
+      const marks = await this.markOpenTrades(now);
+      return { status: "completed", exits, entries, marks };
+    } finally {
+      this.store.releaseLease(owner);
+    }
+  }
+
+  /**
+   * Restart recovery for the paper adapter: its in-memory orders cannot be
+   * resumed, so pending trades are cancelled and their open orders rejected.
+   * A live adapter will reconcile against `BrokerPort.snapshot()` instead.
+   */
+  recover(now = this.now()): number {
+    this.store.clearLease();
+    let recovered = 0;
+    for (const trade of this.store.listPendingTrades()) {
+      for (const order of this.store.listOrders(trade.id)) {
+        const state = order.state;
+        const at = now.toISOString();
+        if (state.status === "submitted") {
+          const next = applyBrokerUpdate(state, {
+            kind: "rejected",
+            clientOrderId: asClientOrderId(order.clientOrderId),
+            brokerOrderId: null,
+            error: {
+              kind: "unknown",
+              message: "Execution process restarted before the order was acknowledged",
+            },
+            at,
+          });
+          if (next.ok) {
+            this.store.updateOrder(order.clientOrderId, {
+              state: next.value,
+              status: next.value.status,
+              brokerOrderId: brokerIdOf(next.value),
+            });
+          }
+        } else if (state.status === "acknowledged" || state.status === "partially_filled") {
+          const next = applyBrokerUpdate(state, {
+            kind: "cancelled",
+            clientOrderId: asClientOrderId(order.clientOrderId),
+            brokerOrderId: state.brokerOrderId,
+            at,
+          });
+          if (next.ok) {
+            this.store.updateOrder(order.clientOrderId, {
+              state: next.value,
+              status: next.value.status,
+              brokerOrderId: brokerIdOf(next.value),
+            });
+          }
+        }
+      }
+      this.store.updateTrade(trade.id, { status: "cancelled" });
+      this.store.appendEvent({
+        tradeId: trade.id,
+        type: "recovered_after_restart",
+        dedupeKey: `trade:${trade.id}:recovered`,
+        payload: { note: "Paper broker state is not persisted across restarts" },
+        createdAt: now.toISOString(),
+      });
+      recovered += 1;
+    }
+    return recovered;
+  }
+
+  private async runExits(now: Date, config: ExecutionConfig): Promise<number> {
+    let exited = 0;
+    for (const trade of this.store.listOpenTrades()) {
+      const setup = this.setups.find(trade.opportunityId);
+      const close = await this.closeQuote(trade);
+      const decision = evaluateExit({
+        trade,
+        setupState: setup?.state ?? null,
+        closeNetPerShare: close?.net ?? null,
+        now,
+        config,
+      });
+
+      if (!decision.reason) {
+        if (decision.unable) {
+          this.store.appendEvent({
+            tradeId: trade.id,
+            type: "exit_unable",
+            dedupeKey: `exit-unable:${trade.id}:${Math.floor(now.getTime() / 60_000)}`,
+            payload: { reason: decision.unable },
+            createdAt: now.toISOString(),
+          });
+        }
+        continue;
+      }
+
+      const result = await this.closeLocked(trade.id, decision.reason);
+      if (result.ok) exited += 1;
+      else this.logger(`Automated exit skipped for ${trade.id}: ${result.error.kind}`);
+    }
+    return exited;
+  }
+
+  private async runEntries(config: ExecutionConfig): Promise<number> {
+    let entered = 0;
+    for (const setup of this.setups.listEntryReady()) {
+      if (this.store.listOpenTrades().length >= config.limits.maxOpenTrades) break;
+      const existing = this.store.findByOpportunity(setup.id);
+      if (existing && existing.status !== "rejected" && existing.status !== "cancelled") continue;
+      const result = await this.enterLocked(setup.id);
+      if (result.ok) entered += 1;
+      else this.logger(`Automated entry skipped for ${setup.symbol}: ${result.error.kind}`);
+    }
+    return entered;
+  }
+
+  private async markOpenTrades(now: Date): Promise<number> {
+    const open = this.store.listOpenTrades().filter((trade) => trade.status === "open");
+    let positionsUsd = 0;
+    let marked = 0;
+
+    for (const trade of open) {
+      const close = await this.closeQuote(trade);
+      if (!close) continue;
+      const multiplier =
+        trade.entrySummary?.legs[0]?.multiplier ?? trade.setup.legs[0]?.multiplier ?? 100;
+      const liquidationValueUsd = roundMoney(-close.net * multiplier);
+      this.store.recordMark({
+        tradeId: trade.id,
+        markedAt: now.toISOString(),
+        liquidationValueUsd,
+        underlyingPrice: close.underlyingPrice,
+      });
+      positionsUsd += liquidationValueUsd;
+      marked += 1;
+    }
+
+    const snapshot = await this.broker.snapshot();
+    if (snapshot.ok) {
+      this.store.recordEquity({
+        asOf: now.toISOString(),
+        cashUsd: snapshot.value.cashUsd,
+        positionsUsd: roundMoney(positionsUsd),
+        equityUsd: roundMoney(snapshot.value.cashUsd + positionsUsd),
+      });
+    }
+    return marked;
+  }
+
+  private async closeQuote(
+    trade: ExecutionTrade
+  ): Promise<{ net: number; underlyingPrice: number | null } | null> {
+    try {
+      const chain = await this.market.chain(trade.setup.symbol, trade.setup.expiry);
+      const quotes = quotesFromChain(chain);
+      const net = packageTouchPrice(reverseLegs(trade.setup.legs), quotes);
+      if (!net.ok) return null;
+      return { net: net.value, underlyingPrice: chain.underlyingPrice };
+    } catch {
+      return null;
+    }
   }
 
   private async priceRequest(
@@ -501,8 +704,9 @@ export class ExecutionEngine {
       tradeId,
       type: "trade_closed",
       dedupeKey: `trade:${tradeId}:closed`,
-      payload: { pnl: pnl.value },
+      payload: { pnl: pnl.value, reason: this.exitReasons.get(update.clientOrderId) ?? null },
       createdAt: update.at,
     });
+    this.exitReasons.delete(update.clientOrderId);
   }
 }

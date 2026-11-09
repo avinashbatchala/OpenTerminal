@@ -228,4 +228,49 @@ describe("execution persistence", () => {
     store.releaseLease("one");
     expect(store.acquireLease("two", 30_000)).toBe(true);
   });
+
+  it("records marks, equity snapshots and clears the lease", () => {
+    const trade = store.createTrade({
+      id: "trade-marks",
+      opportunityId: "opp-marks",
+      identityKey: "identity-marks",
+      symbol: "AAPL",
+      horizon: "swing",
+      strategy: "long_call",
+      setup: setup({ id: "opp-marks", identityKey: "identity-marks" }),
+    });
+
+    store.recordMark({
+      tradeId: trade.id,
+      markedAt: "2026-11-09T15:00:00.000Z",
+      liquidationValueUsd: 100,
+      underlyingPrice: 101,
+    });
+    expect(store.listMarks(trade.id)).toEqual([
+      {
+        tradeId: trade.id,
+        markedAt: "2026-11-09T15:00:00.000Z",
+        liquidationValueUsd: 100,
+        underlyingPrice: 101,
+      },
+    ]);
+
+    store.recordEquity({
+      asOf: "2026-11-09T15:00:00.000Z",
+      cashUsd: 99_000,
+      positionsUsd: 1_000,
+      equityUsd: 100_000,
+    });
+    expect(store.latestEquity()).toEqual({
+      asOf: "2026-11-09T15:00:00.000Z",
+      cashUsd: 99_000,
+      positionsUsd: 1_000,
+      equityUsd: 100_000,
+    });
+    expect(store.equityHistory()).toHaveLength(1);
+
+    expect(store.acquireLease("one", 30_000)).toBe(true);
+    store.clearLease();
+    expect(store.acquireLease("two", 30_000)).toBe(true);
+  });
 });

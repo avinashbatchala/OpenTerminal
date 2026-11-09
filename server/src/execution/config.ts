@@ -2,6 +2,17 @@ export type ExecutionConfig = {
   /** Automation is off until a later phase; manual paper trades still work. */
   enabled: boolean;
   startingCashUsd: number;
+  automation: {
+    entries: boolean;
+    exits: boolean;
+  };
+  exits: {
+    /** Fraction of entry premium (debit) or credit captured before taking profit. */
+    profitTargetFraction: number;
+    /** Loss multiple of entry premium/credit before stopping out. */
+    stopLossFraction: number;
+    timeStopMinutes: number | null;
+  };
   slippage: {
     spreadFactor: number;
     impactBps: number;
@@ -27,11 +38,20 @@ export function defaultExecutionConfig(): ExecutionConfig {
   return {
     enabled: false,
     startingCashUsd: 100_000,
+    automation: {
+      entries: false,
+      exits: true,
+    },
+    exits: {
+      profitTargetFraction: 0.5,
+      stopLossFraction: 1,
+      timeStopMinutes: null,
+    },
     slippage: {
       spreadFactor: 1,
       impactBps: 0,
       jitterBps: 0,
-      maxSlippagePct: 15,
+      maxSlippagePct: 50,
     },
     quotes: {
       maxQuoteAgeMs: 180_000,
@@ -67,6 +87,8 @@ export function normalizeExecutionConfig(
   fallback = defaultExecutionConfig()
 ): ExecutionConfig {
   const value = object(raw);
+  const automation = object(value.automation);
+  const exits = object(value.exits);
   const slippage = object(value.slippage);
   const quotes = object(value.quotes);
   const fees = object(value.fees);
@@ -78,6 +100,30 @@ export function normalizeExecutionConfig(
       1,
       finite(value.startingCashUsd, fallback.startingCashUsd)
     ),
+    automation: {
+      entries: bool(automation.entries, fallback.automation.entries),
+      exits: bool(automation.exits, fallback.automation.exits),
+    },
+    exits: {
+      profitTargetFraction: Math.min(
+        2,
+        Math.max(
+          0.05,
+          finite(exits.profitTargetFraction, fallback.exits.profitTargetFraction)
+        )
+      ),
+      stopLossFraction: Math.min(
+        5,
+        Math.max(0.1, finite(exits.stopLossFraction, fallback.exits.stopLossFraction))
+      ),
+      timeStopMinutes:
+        exits.timeStopMinutes === null
+          ? null
+          : Math.max(
+              1,
+              Math.floor(finite(exits.timeStopMinutes, fallback.exits.timeStopMinutes ?? 0)) || 1
+            ),
+    },
     slippage: {
       spreadFactor: Math.min(
         2,

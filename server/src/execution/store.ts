@@ -11,9 +11,11 @@ import { submittedOrder } from "./domain/order.js";
 import type { TradePnl } from "./domain/pnl.js";
 import type { BrokerOrderRequest } from "./ports/broker.js";
 import type {
+  EquitySnapshot,
   ExecutionEvent,
   ExecutionFill,
   ExecutionIntent,
+  ExecutionMark,
   ExecutionOrder,
   ExecutionTrade,
   ExecutionTradeStatus,
@@ -100,6 +102,26 @@ CREATE TABLE execution_lease (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   owner TEXT NOT NULL,
   expires_at INTEGER NOT NULL
+);
+`,
+  },
+  {
+    version: 2,
+    sql: `
+CREATE TABLE execution_marks (
+  trade_id TEXT NOT NULL REFERENCES execution_trades(id) ON DELETE CASCADE,
+  marked_at TEXT NOT NULL,
+  liquidation_value_usd REAL NOT NULL,
+  underlying_price REAL,
+  PRIMARY KEY (trade_id, marked_at)
+);
+CREATE INDEX execution_marks_trade_idx ON execution_marks(trade_id, marked_at DESC);
+
+CREATE TABLE execution_equity (
+  as_of TEXT PRIMARY KEY,
+  cash_usd REAL NOT NULL,
+  positions_usd REAL NOT NULL,
+  equity_usd REAL NOT NULL
 );
 `,
   },
@@ -280,6 +302,10 @@ export class ExecutionStore {
     this.database.prepare("DELETE FROM execution_lease WHERE id = 1 AND owner = ?").run(owner);
   }
 
+  clearLease(): void {
+    this.database.prepare("DELETE FROM execution_lease").run();
+  }
+
   runInTransaction<T>(fn: () => T): T {
     return this.database.transaction(fn)();
   }
@@ -371,6 +397,14 @@ export class ExecutionStore {
           .prepare("SELECT * FROM execution_trades ORDER BY created_at DESC LIMIT ?")
           .all(filters.limit ?? 100);
     return (rows as any[]).map(mapTrade);
+  }
+
+  listPendingTrades(): ExecutionTrade[] {
+    return (this.database
+      .prepare(
+        "SELECT * FROM execution_trades WHERE status IN ('pending_entry','pending_exit') ORDER BY created_at"
+      )
+      .all() as any[]).map(mapTrade);
   }
 
   listOpenTrades(): ExecutionTrade[] {
@@ -513,6 +547,62 @@ export class ExecutionStore {
     return (this.database
       .prepare("SELECT * FROM execution_events WHERE trade_id = ? ORDER BY created_at, id")
       .all(tradeId) as any[]).map(mapEvent);
+  }
+
+  recordMark(mark: ExecutionMark): void {
+    this.database
+      .prepare(
+        `INSERT OR REPLACE INTO execution_marks
+          (trade_id, marked_at, liquidation_value_usd, underlying_price)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(mark.tradeId, mark.markedAt, mark.liquidationValueUsd, mark.underlyingPrice);
+  }
+
+  listMarks(tradeId: string, limit = 100): ExecutionMark[] {
+    return (this.database
+      .prepare(
+        "SELECT * FROM execution_marks WHERE trade_id = ? ORDER BY marked_at DESC LIMIT ?"
+      )
+      .all(tradeId, limit) as any[]).map((row) => ({
+      tradeId: row.trade_id,
+      markedAt: row.marked_at,
+      liquidationValueUsd: row.liquidation_value_usd,
+      underlyingPrice: row.underlying_price ?? null,
+    }));
+  }
+
+  recordEquity(snapshot: EquitySnapshot): void {
+    this.database
+      .prepare(
+        `INSERT OR REPLACE INTO execution_equity (as_of, cash_usd, positions_usd, equity_usd)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(snapshot.asOf, snapshot.cashUsd, snapshot.positionsUsd, snapshot.equityUsd);
+  }
+
+  latestEquity(): EquitySnapshot | null {
+    const row = this.database
+      .prepare("SELECT * FROM execution_equity ORDER BY as_of DESC LIMIT 1")
+      .get() as any;
+    if (!row) return null;
+    return {
+      asOf: row.as_of,
+      cashUsd: row.cash_usd,
+      positionsUsd: row.positions_usd,
+      equityUsd: row.equity_usd,
+    };
+  }
+
+  equityHistory(limit = 200): EquitySnapshot[] {
+    return (this.database
+      .prepare("SELECT * FROM execution_equity ORDER BY as_of DESC LIMIT ?")
+      .all(limit) as any[]).map((row) => ({
+      asOf: row.as_of,
+      cashUsd: row.cash_usd,
+      positionsUsd: row.positions_usd,
+      equityUsd: row.equity_usd,
+    }));
   }
 
   counts(): Record<ExecutionTradeStatus, number> {

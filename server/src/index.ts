@@ -7,7 +7,7 @@ import { schwabRouter } from "./routes/schwab.js";
 import { streamRouter } from "./routes/stream.js";
 import { settingsRouter } from "./routes/settings.js";
 import { scannerRouter, scannerScheduler } from "./routes/scanner.js";
-import { executionRouter } from "./routes/execution.js";
+import { executionRouter, executionScheduler } from "./routes/execution.js";
 import { allStats } from "./providers/registry.js";
 import { schwabStreamer } from "./providers/schwabStreamer.js";
 import { isSchwabConfigured } from "./providers/schwabAuth.js";
@@ -91,4 +91,5 @@ const HOST = process.env.API_HOST ?? "127.0.0.1";
 app.listen(PORT, HOST, () => {
   console.log(`OpenTerminal API listening on http://${HOST}:${PORT}`);
   scannerScheduler.start();
+  executionScheduler.start();
 });
