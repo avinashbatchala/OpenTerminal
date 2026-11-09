@@ -5,11 +5,15 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../lib/api";
 import {
+  deadlineStatus,
+  planLine,
+  tradeAction,
+} from "../../lib/opportunityInsight";
+import {
   STRATEGY_LABELS,
   emptyState,
   formatDateTime,
   formatUsd,
-  legsSummary,
   type Horizon,
   type Opportunity,
   type ScannerNotification,
@@ -52,6 +56,26 @@ function directionClass(direction: string) {
   return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "dim";
 }
 
+function Kpi({
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  tone?: "default" | "up" | "amber" | "down";
+}) {
+  return (
+    <div className="scanner-kpi" data-tone={tone}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+      <span className="scanner-kpi-hint">{hint}</span>
+    </div>
+  );
+}
+
 export default function OpportunitiesPage() {
   const queryClient = useQueryClient();
   const watchlist = useTerminal((state) => state.watchlist);
@@ -69,6 +93,7 @@ export default function OpportunitiesPage() {
   const watchRevision = useRef<number | null>(null);
   const syncedKey = useRef<string>("");
   const syncInFlight = useRef(false);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const statusQuery = useQuery({
     queryKey: ["scanner", "status"],
@@ -107,6 +132,28 @@ export default function OpportunitiesPage() {
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["scanner"] });
+  };
+
+  const moveSelection = (direction: 1 | -1) => {
+    const buttons = Array.from(
+      listRef.current?.querySelectorAll<HTMLButtonElement>("[data-setup]") ?? []
+    );
+    if (buttons.length === 0) return;
+    const current = buttons.findIndex((button) => button === document.activeElement);
+    const index =
+      current === -1
+        ? direction === 1
+          ? 0
+          : buttons.length - 1
+        : Math.min(buttons.length - 1, Math.max(0, current + direction));
+    buttons[index]?.focus();
+    buttons[index]?.click();
+  };
+
+  const onListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    moveSelection(event.key === "ArrowDown" ? 1 : -1);
   };
 
   const syncMutation = useMutation({
@@ -233,9 +280,17 @@ export default function OpportunitiesPage() {
     return true;
   });
 
-  const activeCount = all.filter(
+  const activeSetups = all.filter(
     (opportunity) => ACTIVE_STATES.has(opportunity.state) && !opportunity.archived
-  ).length;
+  );
+  const activeCount = activeSetups.length;
+  const entryReadyCount = activeSetups.filter((opportunity) => opportunity.state === "entry_ready").length;
+  const watchingCount = activeSetups.filter((opportunity) => opportunity.state === "watching").length;
+  const now = Date.now();
+  const expiringCount = activeSetups.filter((opportunity) => {
+    const remaining = Date.parse(opportunity.deadline) - now;
+    return Number.isFinite(remaining) && remaining > 0 && remaining <= 86_400_000;
+  }).length;
   const filtersActive =
     search.trim() !== "" ||
     strategy !== "all" ||
@@ -345,6 +400,23 @@ export default function OpportunitiesPage() {
       </header>
 
       <main className="mx-auto w-full max-w-[1700px] space-y-3 p-3">
+        <dl className="scanner-kpis" aria-label="Scanner summary">
+          <Kpi label="In play" value={activeSetups.length} hint="Active setups" />
+          <Kpi label="Entry ready" value={entryReadyCount} hint="Trigger confirmed" tone="up" />
+          <Kpi label="Watching" value={watchingCount} hint="Waiting for trigger" tone="amber" />
+          <Kpi
+            label="Expiring <24h"
+            value={expiringCount}
+            hint="Deadline soon"
+            tone={expiringCount > 0 ? "down" : "default"}
+          />
+          <Kpi
+            label="Unread alerts"
+            value={unread.length}
+            hint="Lifecycle events"
+            tone={unread.length > 0 ? "amber" : "default"}
+          />
+        </dl>
         {statusQuery.error && (
           <div role="alert" className="rounded-md border border-[var(--down)] bg-[var(--panel)] px-3 py-2 text-[11px] down">
             {(statusQuery.error as Error).message}
@@ -635,6 +707,7 @@ export default function OpportunitiesPage() {
                     <span className="text-[10px] dim">
                       {filtered.length} shown · {activeCount} active
                     </span>
+                    <span className="hidden text-[10px] dim md:inline">↑↓ to navigate</span>
                     {opportunitiesQuery.isFetching && <span className="text-[10px] dim">updating…</span>}
                     <button
                       type="button"
@@ -728,7 +801,11 @@ export default function OpportunitiesPage() {
                 </div>
 
                 {opportunitiesQuery.isLoading ? (
-                  <div className="p-6 text-center text-[11px] dim">Loading setups…</div>
+                  <div className="space-y-1.5 p-2" aria-busy="true" aria-label="Loading setups">
+                    {[0, 1, 2, 3].map((row) => (
+                      <div key={row} className="setup-skeleton" />
+                    ))}
+                  </div>
                 ) : opportunitiesQuery.error ? (
                   <div role="alert" className="p-4 text-[11px] down">
                     {(opportunitiesQuery.error as Error).message}
@@ -744,62 +821,79 @@ export default function OpportunitiesPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-1.5 p-2">
+                  <div
+                    ref={listRef}
+                    className="space-y-1.5 p-2"
+                    onKeyDown={onListKeyDown}
+                  >
                     {filtered.map((opportunity) => {
                       const selected = selectedId === opportunity.id;
+                      const action = tradeAction(opportunity);
+                      const deadline = deadlineStatus(opportunity.deadline);
                       return (
                         <button
                           key={opportunity.id}
                           type="button"
-                          className="scanner-card"
+                          data-setup="true"
+                          className="scanner-card setup-card"
                           data-selected={selected}
                           aria-current={selected ? "true" : undefined}
                           onClick={() => setSelectedId(opportunity.id)}
                         >
-                          <span className="flex items-start justify-between gap-3">
-                            <span className="min-w-0">
-                              <span className="flex flex-wrap items-center gap-1.5">
-                                <span className="amber text-[14px] font-bold">{opportunity.symbol}</span>
-                                {opportunity.pinned && (
-                                  <span className="amber text-[10px]" title="Pinned">
-                                    ★
-                                  </span>
-                                )}
-                                <StateBadge state={opportunity.state} />
-                                {opportunity.currentHealth !== "current" && (
-                                  <HealthBadge health={opportunity.currentHealth} />
-                                )}
-                                {opportunity.dismissed && (
-                                  <span className="scanner-badge scanner-badge--muted">Muted</span>
-                                )}
-                                {opportunity.archived && (
-                                  <span className="scanner-badge scanner-badge--muted">Archived</span>
-                                )}
+                          <span className="setup-top">
+                            <span className="setup-identity">
+                              <span className="setup-symbol">{opportunity.symbol}</span>
+                              <span className={`setup-direction ${directionClass(opportunity.direction)}`}>
+                                {opportunity.direction.toUpperCase()}
                               </span>
-                              <span className="mt-1 block truncate text-[11px] dim">
-                                <span className={directionClass(opportunity.direction)}>
-                                  {opportunity.direction.toUpperCase()}
+                              <StateBadge state={opportunity.state} />
+                              {opportunity.currentHealth !== "current" && (
+                                <HealthBadge health={opportunity.currentHealth} />
+                              )}
+                              {opportunity.pinned && (
+                                <span className="amber text-[10px]" title="Pinned">
+                                  ★
                                 </span>
-                                {" · "}
-                                {STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}
-                                {" · "}
-                                {recipeNames.get(opportunity.recipeId) ?? opportunity.recipeId}
-                              </span>
+                              )}
+                              {opportunity.dismissed && (
+                                <span className="scanner-badge scanner-badge--muted">Muted</span>
+                              )}
+                              {opportunity.archived && (
+                                <span className="scanner-badge scanner-badge--muted">Archived</span>
+                              )}
                             </span>
-                            <span className="shrink-0 text-right">
-                              <span className="block text-[12px]">{formatUsd(opportunity.risk.maxLossUsd)}</span>
-                              <span className="block text-[9px] uppercase tracking-wide dim">Max loss</span>
+                            <span className="setup-risk">
+                              <span className="setup-risk-value">
+                                {formatUsd(opportunity.risk.maxLossUsd)}
+                              </span>
+                              <span className="setup-risk-label">Max loss</span>
                             </span>
                           </span>
-                          <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] dim">
+
+                          <span className="setup-meta">
+                            {STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}
+                            <span className="setup-sep">·</span>
+                            {recipeNames.get(opportunity.recipeId) ?? opportunity.recipeId}
+                            <span className="setup-sep">·</span>
+                            {opportunity.horizon}
+                          </span>
+
+                          <span className="setup-plan">
+                            <span className={`setup-plan-title ${action.tone}`}>{action.title}</span>
+                            <span className="setup-plan-directive">{action.directive}</span>
+                          </span>
+
+                          <span className="setup-levels">{planLine(opportunity)}</span>
+
+                          <span className="setup-foot">
                             <span>Exp {opportunity.expiry}</span>
-                            <span>Updated {formatDateTime(opportunity.lastCheckedAt ?? opportunity.updatedAt)}</span>
                             <span>
                               {opportunity.legs.length} leg{opportunity.legs.length === 1 ? "" : "s"}
                             </span>
-                          </span>
-                          <span className="mt-0.5 block truncate text-[10px] dim">
-                            {legsSummary(opportunity)}
+                            <span>
+                              Updated {formatDateTime(opportunity.lastCheckedAt ?? opportunity.updatedAt)}
+                            </span>
+                            <span className={`ml-auto ${deadline.tone}`}>{deadline.label}</span>
                           </span>
                         </button>
                       );
