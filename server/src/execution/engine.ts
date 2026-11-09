@@ -413,7 +413,10 @@ export class ExecutionEngine {
   private async runEntries(config: ExecutionConfig): Promise<number> {
     let entered = 0;
     for (const setup of this.setups.listEntryReady()) {
-      if (this.store.listOpenTrades().length >= config.limits.maxOpenTrades) break;
+      const open = this.store.listOpenTrades();
+      if (open.length >= config.limits.maxOpenTrades) break;
+      // The per-symbol cap is expected to block duplicates; skip quietly.
+      if (open.some((trade) => trade.symbol === setup.symbol)) continue;
       const existing = this.store.findByOpportunity(setup.id);
       if (existing && existing.status !== "rejected" && existing.status !== "cancelled") continue;
       const result = await this.enterLocked(setup.id);
