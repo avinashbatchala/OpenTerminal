@@ -1782,3 +1782,336 @@ h3 {
     background: transparent;
   }
 }
+
+/* Markets: a quiet pulse strip, a watchlist rail and one chart-first focus. */
+.edge-market-layout {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.edge-market-focus {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.edge-market-watchlist {
+  max-height: 640px;
+}
+
+.edge-market-watchlist .edge-scroll {
+  max-height: 640px;
+}
+
+.edge-pulse {
+  display: flex;
+  border: 1px solid var(--edge-line);
+  border-radius: 8px;
+  background: var(--edge-surface);
+  overflow-x: auto;
+}
+
+.edge-pulse-item {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 150px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 0;
+  border-left: 1px solid var(--edge-line);
+  background: transparent;
+  color: var(--edge-text);
+  font-family: var(--edge-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.edge-pulse-item:first-child {
+  border-left: 0;
+}
+
+.edge-pulse-item:hover {
+  background: var(--edge-surface-2);
+}
+
+.edge-pulse-label {
+  color: var(--edge-muted);
+  font-size: 12px;
+}
+
+.edge-pulse-figure {
+  color: var(--edge-text);
+  font-family: var(--edge-mono);
+  font-size: 17px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.edge-pulse-change {
+  font-family: var(--edge-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.edge-symbol-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.edge-symbol-hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.edge-symbol-hero h2 {
+  margin: 0;
+  color: var(--edge-text);
+  font-family: var(--edge-font);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.edge-symbol-hero-name {
+  color: var(--edge-muted);
+  font-size: 13px;
+}
+
+.edge-symbol-hero-price-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.edge-symbol-hero-price {
+  color: var(--edge-text);
+  font-family: var(--edge-mono);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.edge-symbol-hero-change {
+  font-family: var(--edge-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.edge-chart--market {
+  height: 500px;
+}
+
+.edge-market-info {
+  overflow: hidden;
+}
+
+.edge-market-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--edge-line);
+}
+
+.edge-market-tab {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--edge-muted);
+  font-family: var(--edge-font);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.edge-market-tab:hover {
+  color: var(--edge-text);
+}
+
+.edge-market-tab[aria-selected="true"] {
+  background: var(--edge-surface-2);
+  color: var(--edge-text);
+}
+
+.edge-market-tab-body {
+  height: 300px;
+  overflow-y: auto;
+}
+
+.edge-market-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--edge-line);
+  color: var(--edge-muted);
+  font-size: 12px;
+}
+
+.edge-market-inline-head .edge-btn {
+  min-height: 28px;
+}
+
+.edge-market-setups .edge-setup-row:last-child {
+  border-bottom: 0;
+}
+
+.chart-toolbar {
+  border-bottom: 1px solid var(--edge-line);
+}
+
+.chart-ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chart-type-select {
+  max-width: 130px;
+  min-height: 30px;
+}
+
+.chart-tools {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-tools summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.chart-tools summary::-webkit-details-marker {
+  display: none;
+}
+
+.chart-tools summary::after {
+  content: " +";
+}
+
+.chart-tools[open] summary::after {
+  content: " -";
+}
+
+.chart-tools-row {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+table.data-table tbody tr[data-active="true"] {
+  background: var(--edge-accent-soft);
+}
+
+table.data-table tbody tr[data-active="true"] td:first-child {
+  color: var(--edge-accent);
+}
+
+table.data-table tbody tr:focus-visible {
+  outline: 2px solid var(--edge-focus);
+  outline-offset: -2px;
+}
+
+@media (max-width: 1023px) {
+  .edge-market-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .edge-market-focus {
+    order: 1;
+  }
+  .edge-market-watchlist {
+    order: 2;
+    max-height: none;
+  }
+  .edge-market-watchlist .edge-scroll {
+    max-height: 420px;
+  }
+  .edge-chart--market {
+    height: 380px;
+  }
+}
+
+@media (max-width: 720px) {
+  .edge-pulse-item {
+    min-width: 150px;
+  }
+  .edge-symbol-hero {
+    flex-direction: column;
+  }
+  .edge-symbol-hero-price {
+    font-size: 30px;
+  }
+  .edge-market-tab-body {
+    height: 280px;
+  }
+  .chart-ranges {
+    flex: 1 0 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .chart-ranges .term-btn {
+    flex: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .edge-markets .edge-page-actions {
+    display: none;
+  }
+  .edge-pulse {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .edge-pulse-item {
+    min-width: 0;
+    border-top: 1px solid var(--edge-line);
+    border-left: 1px solid var(--edge-line);
+  }
+  .edge-pulse-item:nth-child(odd) {
+    border-left: 0;
+  }
+  .edge-pulse-item:nth-child(-n + 2) {
+    border-top: 0;
+  }
+}
+
+.watchlist-remove {
+  color: var(--edge-muted);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+table.data-table tbody tr:hover .watchlist-remove,
+table.data-table tbody tr:focus-within .watchlist-remove,
+.watchlist-remove:focus-visible {
+  opacity: 1;
+}
+
+.watchlist-remove:hover {
+  color: var(--edge-down);
+}
+
+@media (hover: none) {
+  .watchlist-remove {
+    opacity: 1;
+  }
+}

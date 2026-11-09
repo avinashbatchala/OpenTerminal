@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../lib/api";
 import { STRATEGY_LABELS, formatUsd, type Opportunity } from "../../lib/scanner";
-import { Surface } from "../shell/Surface";
 
 function stateChip(state: Opportunity["state"]) {
   if (state === "entry_ready") return "edge-chip edge-chip--accent";
@@ -37,16 +36,13 @@ export default function ScannerPreview() {
     .slice(0, 5);
 
   return (
-    <Surface
-      title="Setups"
-      sub={isLoading ? "Loading" : `${rows.length} active`}
-      action={
+    <div className="edge-market-setups">
+      <div className="edge-market-inline-head">
+        <span>{isLoading ? "Loading setups" : `${rows.length} active`}</span>
         <Link href="/scanner" className="edge-btn edge-btn--quiet edge-btn--sm">
           Open scanner
         </Link>
-      }
-      flush
-    >
+      </div>
       {rows.length === 0 ? (
         <div className="edge-empty">
           No active setups. The scanner looks for new entries during the US session.
@@ -101,6 +97,6 @@ export default function ScannerPreview() {
           })}
         </div>
       )}
-    </Surface>
+    </div>
   );
 }

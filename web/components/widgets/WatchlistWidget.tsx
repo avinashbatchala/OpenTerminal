@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { apiGet, fmt, fmtBig, pctClass, type Quote } from "../../lib/api";
+import { apiGet, fmt, pctClass, type Quote } from "../../lib/api";
 import { mergeLiveQuote, useLiveQuotes } from "../../lib/live";
 import { normalizeSymbol, symbolsParam } from "../../lib/symbol";
 import { useTerminal } from "../../store/terminal";
@@ -13,6 +13,7 @@ export default function WatchlistWidget() {
   const addToWatchlist = useTerminal((s) => s.addToWatchlist);
   const removeFromWatchlist = useTerminal((s) => s.removeFromWatchlist);
   const setActiveSymbol = useTerminal((s) => s.setActiveSymbol);
+  const activeSymbol = useTerminal((s) => s.activeSymbol);
   const [input, setInput] = useState("");
   const [invalid, setInvalid] = useState(false);
 
@@ -55,7 +56,7 @@ export default function WatchlistWidget() {
       </form>
       <table className="data-table">
         <thead>
-          <tr><th>Sym</th><th>Last</th><th>Chg%</th><th>Vol</th><th></th></tr>
+          <tr><th>Symbol</th><th>Last</th><th>Chg%</th><th></th></tr>
         </thead>
         <tbody>
           {watchlist.map((sym) => {
@@ -63,20 +64,32 @@ export default function WatchlistWidget() {
             const live = liveQuotes[sym];
             const q = rest ? mergeLiveQuote(rest, live) : live;
             return (
-              <tr key={sym} onClick={() => setActiveSymbol(sym)}>
+              <tr
+                key={sym}
+                data-active={sym === activeSymbol}
+                tabIndex={0}
+                onClick={() => setActiveSymbol(sym)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setActiveSymbol(sym);
+                  }
+                }}
+              >
                 <td className="font-bold">{sym}</td>
                 <td><Flash value={q?.price}>{fmt(q?.price)}</Flash></td>
                 <td className={pctClass(q?.changePercent)}>
                   <Flash value={q?.changePercent}>{fmt(q?.changePercent)}%</Flash>
                 </td>
-                <td>{fmtBig(q?.volume)}</td>
                 <td>
                   <button
+                    type="button"
+                    aria-label={`Remove ${sym} from watchlist`}
                     onClick={(e) => {
                       e.stopPropagation();
                       removeFromWatchlist(sym);
                     }}
-                    className="dim hover:text-[var(--down)]"
+                    className="watchlist-remove"
                   >
                     ✕
                   </button>

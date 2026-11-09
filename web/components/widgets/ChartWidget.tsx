@@ -103,7 +103,13 @@ const UP_COLOR = "#30d158";
 const DOWN_COLOR = "#ff453a";
 const ACCENT_COLOR = "#ff9f0a";
 
-export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
+export default function ChartWidget({
+  widget,
+  compact = false,
+}: {
+  widget: WidgetInstance;
+  compact?: boolean;
+}) {
   const symbol = useWidgetSymbol(widget);
   const [range, setRange] = useState<Range>("1D");
   const [chartType, setChartType] = useState<ChartType>("candles");
@@ -470,24 +476,63 @@ export default function ChartWidget({ widget }: { widget: WidgetInstance }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex gap-1 p-1 flex-wrap shrink-0">
-        {RANGES.map((r) => (
-          <button key={r} className={`term-btn ${range === r ? "active" : ""}`} onClick={() => setRange(r)}>
-            {r}
-          </button>
-        ))}
+      <div className="chart-toolbar flex gap-1 p-2 flex-wrap shrink-0 items-center">
+        <div className="chart-ranges">
+          {RANGES.map((r) => (
+            <button key={r} className={`term-btn ${range === r ? "active" : ""}`} onClick={() => setRange(r)}>
+              {r}
+            </button>
+          ))}
+        </div>
         <span className="w-2" />
-        {CHART_TYPES.map((t) => (
-          <button key={t} className={`term-btn ${chartType === t ? "active" : ""}`} onClick={() => setChartType(t)}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-        <span className="w-2" />
-        {INDICATORS.map((ind) => (
-          <button key={ind} className={`term-btn ${active.has(ind) ? "active" : ""}`} onClick={() => toggleIndicator(ind)}>
-            {ind}
-          </button>
-        ))}
+        {compact ? (
+          <>
+            <label className="sr-only" htmlFor={`chart-type-${widget.id}`}>
+              Chart type
+            </label>
+            <select
+              id={`chart-type-${widget.id}`}
+              className="chart-type-select"
+              value={chartType}
+              onChange={(event) => setChartType(event.target.value as ChartType)}
+              aria-label="Chart type"
+            >
+              {CHART_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </option>
+              ))}
+            </select>
+            <details className="chart-tools">
+              <summary className="term-btn">Indicators</summary>
+              <div className="chart-tools-row">
+                {INDICATORS.map((ind) => (
+                  <button
+                    key={ind}
+                    className={`term-btn ${active.has(ind) ? "active" : ""}`}
+                    onClick={() => toggleIndicator(ind)}
+                  >
+                    {ind}
+                  </button>
+                ))}
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+            {CHART_TYPES.map((t) => (
+              <button key={t} className={`term-btn ${chartType === t ? "active" : ""}`} onClick={() => setChartType(t)}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+            <span className="w-2" />
+            {INDICATORS.map((ind) => (
+              <button key={ind} className={`term-btn ${active.has(ind) ? "active" : ""}`} onClick={() => toggleIndicator(ind)}>
+                {ind}
+              </button>
+            ))}
+          </>
+        )}
         <span
           className={`ml-auto text-[10px] ${chartLive ? "up" : "dim"}`}
           data-live={chartLive ? "1" : "0"}
