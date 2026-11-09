@@ -3468,3 +3468,85 @@ table.data-table tbody tr:focus-within .watchlist-remove,
     font-size: 28px;
   }
 }
+
+/* Changes: recent lifecycle notifications, grouped by setup. */
+.edge-scanner-alert-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.edge-scanner-alert-button:hover {
+  color: var(--edge-accent);
+}
+
+.edge-scanner-alert-button:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--edge-focus);
+  outline-offset: 2px;
+}
+
+.edge-scanner-change-row {
+  grid-template-columns: minmax(0, 1fr) 180px;
+}
+
+.edge-scanner-change-row[data-unread="true"] {
+  box-shadow: inset 2px 0 0 var(--edge-accent);
+}
+
+.edge-scanner-change-time {
+  color: var(--edge-muted);
+  font-family: var(--edge-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.edge-scanner-change-meta {
+  font-size: 11px;
+}
+
+@media (max-width: 1023px) {
+  .edge-scanner-change-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .edge-scanner-change-row .edge-scanner-row-side {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    text-align: left;
+  }
+}
+
+@media (max-width: 1023px) {
+  .edge-scanner-queue-actions {
+    width: 100%;
+  }
+
+  .edge-scanner-queue-actions .edge-tabs {
+    order: 1;
+    width: 100%;
+  }
+
+  .edge-scanner-queue-actions .edge-tab {
+    flex: 1;
+  }
+
+  .edge-scanner-queue-actions .edge-btn {
+    order: 2;
+  }
+
+  .edge-scanner-queue-actions > .edge-muted {
+    order: 3;
+  }
+
+  .edge-scanner-queue-head > .tag {
+    display: none;
+  }
+}
