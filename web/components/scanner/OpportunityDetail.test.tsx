@@ -171,7 +171,11 @@ describe("scanner opportunity detail", () => {
     expect(screen.getByText(/One complete strategy unit/)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Opportunity legs" })).toHaveClass("overflow-x-auto");
     expect(screen.getByText("Entry observed")).toBeInTheDocument();
-    expect(screen.getAllByText("entry ready").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/entry ready/i).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/Execute above 101.00/)).toBeInTheDocument();
+    expect(screen.getByText("Why it's in play")).toBeInTheDocument();
+    expect(screen.getByText("Supports the setup")).toBeInTheDocument();
+    expect(screen.getByText("Watch before acting")).toBeInTheDocument();
     expect(screen.getByText(/Defined risk/)).toBeInTheDocument();
     expect(screen.getByText(/Tokens: 100 in \/ 50 out/)).toBeInTheDocument();
     expect(screen.getByText(/estimated cost unknown/)).toBeInTheDocument();
