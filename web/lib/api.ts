@@ -1,5 +1,9 @@
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+export async function apiGet<T>(
+  path: string,
+  init?: RequestInit & { timeoutMs?: number }
+): Promise<T> {
+  const { timeoutMs, ...rest } = init ?? {};
+  const res = await fetch(path, timeoutMs ? { ...rest, signal: AbortSignal.timeout(timeoutMs) } : rest);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? `HTTP ${res.status}`);

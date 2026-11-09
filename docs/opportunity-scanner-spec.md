@@ -6,7 +6,7 @@ behavior and unresolved configuration. This document does not enable scanning.
 ## Confirmed product decisions
 
 - Discover options opportunities from the user's watchlist.
-- Separate intraday and swing opportunities on a dedicated Opportunities page.
+- Separate intraday and swing opportunities in a dashboard Opportunities widget.
 - Add a terminal badge for new in-app alerts.
 - Support long calls/puts, debit spreads, credit spreads, and iron condors.
   Exclude covered calls and cash-secured puts from version one.

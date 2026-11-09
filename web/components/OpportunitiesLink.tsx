@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../lib/api";
 import type { ScannerNotification } from "../lib/scanner";
+import { useTerminal } from "../store/terminal";
 
 export default function OpportunitiesLink() {
   const { data = [] } = useQuery({
@@ -12,12 +12,18 @@ export default function OpportunitiesLink() {
     refetchInterval: 30_000,
     retry: 0,
   });
+  const widgets = useTerminal((state) => state.widgets);
+  const addWidget = useTerminal((state) => state.addWidget);
+  const present = widgets.some((widget) => widget.type === "opportunities");
 
   return (
-    <Link
-      href="/opportunities"
-      className="relative flex items-center gap-1 text-[var(--text-dim)] hover:text-[var(--amber)]"
-      title="Opportunity scanner"
+    <button
+      type="button"
+      onClick={() => {
+        if (!present) addWidget("opportunities");
+      }}
+      className="relative flex items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--text-dim)] hover:text-[var(--amber)] cursor-pointer"
+      title={present ? "Opportunities widget is on the dashboard" : "Add the opportunities widget"}
     >
       OPPORTUNITIES
       {data.length > 0 && (
@@ -28,6 +34,6 @@ export default function OpportunitiesLink() {
           {data.length > 99 ? "99+" : data.length}
         </span>
       )}
-    </Link>
+    </button>
   );
 }

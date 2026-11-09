@@ -210,7 +210,7 @@ Values saved in Settings override `.env`; clearing a saved value falls back to t
 
 ### Opportunity Scanner
 
-The scanner ships **disabled** with draft recipe parameters and no accepted configuration. Open `/opportunities` from the terminal’s top bar (or directly) and review fees, expiry ranges, quote/liquidity limits, contract selection, history assumptions, and at least one recipe version/parameter set before activating. The page synchronizes the browser watchlist to the API; watchlist conflicts between tabs are explicit.
+The scanner ships **disabled** with draft recipe parameters and no accepted configuration. Add the **Opportunities** widget from the terminal sidebar (or the top-bar control) and open its settings to review fees, expiry ranges, quote/liquidity limits, contract selection, history assumptions, and at least one recipe version/parameter set before activating. The terminal synchronizes the browser watchlist to the API; a conflict from another tab adopts the server list and is surfaced in the widget settings.
 
 When enabled, the API process runs bounded scans about every five minutes during verified US regular sessions, monitors active setups even after they leave discovery filters, and records lifecycle events, pin/dismiss preferences, monitoring gaps, and deduplicated alerts. Intraday setups expire at the regular-session close; swing setups expire at expiry-day regular-session open. The $250 modeled-loss limit includes configured fees; slippage is shown separately. Missing or stale required data holds a candidate rather than confirming it. IV-history-dependent recipes remain warming up until enough distinct observations exist.
 

@@ -12,6 +12,7 @@ export type WidgetType =
   | "news"
   | "heatmap"
   | "screener"
+  | "opportunities"
   | "crypto"
   | "macro"
   | "options"
@@ -54,6 +55,7 @@ const DEFAULT_WIDGETS: WidgetInstance[] = [
   { id: "w-quote", type: "quote", linked: true },
   { id: "w-watchlist", type: "watchlist", linked: false },
   { id: "w-news", type: "news", linked: true },
+  { id: "w-opportunities", type: "opportunities", linked: false },
   { id: "w-macro", type: "macro", linked: false },
 ];
 
@@ -63,6 +65,7 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "w-watchlist", x: 7, y: 6, w: 5, h: 6 },
   { i: "w-news", x: 0, y: 12, w: 7, h: 7 },
   { i: "w-macro", x: 7, y: 12, w: 5, h: 7 },
+  { i: "w-opportunities", x: 0, y: 19, w: 7, h: 9 },
 ];
 
 const SIZE_BY_TYPE: Record<WidgetType, { w: number; h: number }> = {
@@ -72,6 +75,7 @@ const SIZE_BY_TYPE: Record<WidgetType, { w: number; h: number }> = {
   news: { w: 5, h: 8 },
   heatmap: { w: 7, h: 10 },
   screener: { w: 12, h: 9 },
+  opportunities: { w: 7, h: 9 },
   crypto: { w: 6, h: 9 },
   macro: { w: 5, h: 7 },
   options: { w: 12, h: 9 },

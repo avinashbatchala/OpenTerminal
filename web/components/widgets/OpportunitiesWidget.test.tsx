@@ -3,15 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet } from "../../lib/api";
 import type { Opportunity, ScannerStatus } from "../../lib/scanner";
-import OpportunitiesPage from "./page";
-
-vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
-  ),
-}));
+import OpportunitiesWidget from "./OpportunitiesWidget";
 
 vi.mock("../../lib/api", () => ({
   apiGet: vi.fn(),
@@ -113,7 +105,7 @@ const status: ScannerStatus = {
   config: {
     enabled: true,
     revision: 1,
-    watchlist: ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "SPY"],
+    watchlist: ["AAPL", "MSFT"],
     watchlistRevision: 1,
     fees: {
       currency: "USD",
@@ -177,19 +169,22 @@ beforeEach(() => {
       return { opportunity: selected, checks: [], events: [], assessment: null };
     }
     if (path === "/api/scanner/notifications?unread=true") return [];
-    if (path === "/api/status") return { providers: [] };
     throw new Error(`Unexpected request: ${path}`);
   });
 });
 
-describe("opportunities page", () => {
-  it("clears the selected analysis when the horizon changes", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <OpportunitiesPage />
-      </QueryClientProvider>
-    );
+function renderWidget() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <OpportunitiesWidget />
+    </QueryClientProvider>
+  );
+}
+
+describe("opportunities widget", () => {
+  it("lists setups and clears the open setup when the horizon changes", async () => {
+    renderWidget();
 
     const intradayRow = await screen.findByRole("button", { name: /AAPL/ });
     fireEvent.click(intradayRow);
@@ -204,6 +199,25 @@ describe("opportunities page", () => {
       expect(screen.queryByRole("heading", { name: /AAPL · Long call/ })).not.toBeInTheDocument();
     });
     expect(await screen.findByText("MSFT")).toBeInTheDocument();
-    expect(screen.getByText("No setup selected")).toBeInTheDocument();
+  });
+
+  it("shows the paused state and offers scanner settings", async () => {
+    apiGetMock.mockImplementation(async (path: string) => {
+      if (path === "/api/scanner/status") {
+        return {
+          ...status,
+          config: { ...status.config, enabled: false },
+          readiness: { ...status.readiness, ready: false, issues: ["Enable a recipe"] },
+        };
+      }
+      if (path.startsWith("/api/scanner/opportunities?")) return [];
+      if (path === "/api/scanner/notifications?unread=true") return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    renderWidget();
+
+    expect(await screen.findByText("Scanner is paused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /scanner settings/i })).toBeInTheDocument();
   });
 });

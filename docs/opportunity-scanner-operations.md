@@ -6,8 +6,9 @@ of model compliance, provider completeness, or trading performance.
 
 ## Where it lives
 
-- UI: `/opportunities` (also linked from the terminal top bar with an unread
-  alert badge).
+- UI: the dashboard Opportunities widget (added from the sidebar or the top-bar
+  control, with unread alert badges). Scanner configuration and diagnostics open
+  from the widget.
 - API: `/api/scanner/*`, authenticated through the existing shared key and
   reached from the browser only through the Next proxy.
 - Runtime: an in-process scheduler in the Express API. No external scheduler,
@@ -18,12 +19,12 @@ of model compliance, provider completeness, or trading performance.
 ## Default state
 
 The scanner is **disabled** and every recipe is disabled with unapproved draft
-parameters. Opening the page synchronizes the browser watchlist to the server,
+parameters. The terminal synchronizes the browser watchlist to the server,
 but does not start a scan and does not make a paid AI call.
 
 ## Activation checklist
 
-All of the following must be explicitly accepted on `/opportunities` before
+All of the following must be explicitly accepted in the Opportunities widget's scanner settings before
 activation succeeds:
 
 1. Fee assumptions: per-order, entry/contract, exit/contract, and expiry/contract.

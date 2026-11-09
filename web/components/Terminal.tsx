@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import TopBar from "./TopBar";
 import Sidebar from "./Sidebar";
 import Workspace from "./Workspace";
+import ScannerWatchlistSync from "./scanner/ScannerWatchlistSync";
 import CommandPalette from "./CommandPalette";
 import { ChatProvider } from "./chat/ChatProvider";
 import ChatLauncher from "./chat/ChatLauncher";
@@ -39,6 +40,7 @@ function TerminalContent() {
           "6": () => addWidget("crypto"),
           "7": () => addWidget("options"),
           "8": () => addWidget("portfolio"),
+          "9": () => addWidget("opportunities"),
         };
         const fn = map[e.key];
         if (fn) {
@@ -57,7 +59,8 @@ function TerminalContent() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-auto">
-          <Workspace />
+          <ScannerWatchlistSync />
+      <Workspace />
         </main>
       </div>
       <CommandPalette />
