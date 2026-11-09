@@ -36,7 +36,7 @@ export default function ScannerPreview() {
     .slice(0, 5);
 
   return (
-    <div className="edge-market-setups">
+    <div className="edge-setup-preview">
       <div className="edge-market-inline-head">
         <span>{isLoading ? "Loading setups" : `${rows.length} active`}</span>
         <Link href="/scanner" className="edge-btn edge-btn--quiet edge-btn--sm">

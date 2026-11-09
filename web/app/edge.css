@@ -1492,7 +1492,7 @@ button.term-btn:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
   .chat-launcher {
-    display: none;
+    bottom: calc(72px + env(safe-area-inset-bottom));
   }
 }
 

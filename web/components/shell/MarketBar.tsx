@@ -7,8 +7,7 @@ import { apiGet } from "../../lib/api";
 import type { ExecutionStatus } from "../../lib/paper";
 import { formatUsd } from "../../lib/scanner";
 import { useTerminal } from "../../store/terminal";
-import { useChat } from "../chat/ChatProvider";
-import { SearchIcon, SettingsIcon, SparkIcon } from "./icons";
+import { SearchIcon } from "./icons";
 
 type PlatformStatus = {
   ok: boolean;
@@ -28,7 +27,6 @@ function marketState(date: Date): { label: string; open: boolean } {
 export default function MarketBar() {
   const setCommandOpen = useTerminal((state) => state.setCommandOpen);
   const activeSymbol = useTerminal((state) => state.activeSymbol);
-  const { openChat } = useChat();
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -94,18 +92,6 @@ export default function MarketBar() {
           <span className="edge-account-label">Open</span>
           <span className="edge-account-figure">{openTrades}</span>
         </span>
-        <button
-          type="button"
-          className="edge-icon-btn"
-          onClick={openChat}
-          aria-label="Open AI assistant"
-          title="AI assistant (Alt+K)"
-        >
-          <SparkIcon />
-        </button>
-        <Link href="/settings" className="edge-icon-btn" aria-label="Settings" title="Settings">
-          <SettingsIcon />
-        </Link>
       </div>
     </header>
   );
