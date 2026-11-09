@@ -7,6 +7,7 @@ export function Surface({
   children,
   flush = false,
   className = "",
+  bodyClassName = "",
 }: {
   title?: string;
   sub?: string;
@@ -14,6 +15,7 @@ export function Surface({
   children: ReactNode;
   flush?: boolean;
   className?: string;
+  bodyClassName?: string;
 }) {
   return (
     <section className={`edge-surface ${className}`}>
@@ -26,7 +28,11 @@ export function Surface({
           {action}
         </header>
       )}
-      <div className={flush ? "edge-surface-body--flush" : "edge-surface-body"}>{children}</div>
+      <div
+        className={`${flush ? "edge-surface-body--flush" : "edge-surface-body"} ${bodyClassName}`}
+      >
+        {children}
+      </div>
     </section>
   );
 }
