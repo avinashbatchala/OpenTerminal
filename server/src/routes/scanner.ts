@@ -132,7 +132,8 @@ scannerRouter.get("/opportunities", (req, res) => {
     req.query.state === "watching" ||
     req.query.state === "entry_ready" ||
     req.query.state === "invalidated" ||
-    req.query.state === "expired"
+    req.query.state === "expired" ||
+    req.query.state === "missed"
       ? req.query.state
       : undefined;
   const opportunities = scannerStore.listOpportunities({

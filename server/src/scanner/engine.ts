@@ -35,6 +35,19 @@ export type ScanOutcome = {
   qualified?: number;
 };
 
+export type MonitoringOutcome = {
+  status: "disabled" | "configuration" | "market_closed" | "overlap" | "completed";
+  checks?: number;
+};
+
+/** Minimum gap between routine (no-change) checks during the fast pass. */
+const ROUTINE_CHECK_MS = 5 * 60_000;
+
+function checkDue(opportunity: OpportunityRecord, now: Date): boolean {
+  const last = Date.parse(opportunity.lastCheckedAt ?? opportunity.createdAt);
+  return !Number.isFinite(last) || now.getTime() - last >= ROUTINE_CHECK_MS;
+}
+
 export type ScannerEngineOptions = {
   store: ScannerStore;
   market: ScannerMarketData;
@@ -192,6 +205,116 @@ function currentClosingDebit(
   return credit === null ? null : -credit;
 }
 
+const CREDIT_STRATEGIES = new Set(["iron_condor", "bull_put_credit", "bear_call_credit"]);
+
+type PriceTransition = {
+  state: OpportunityState;
+  events: CheckInput["events"];
+  note: string | null;
+};
+
+function chaseBand(
+  opportunity: OpportunityRecord,
+  price: number
+): { inBand: boolean; beyond: boolean; distancePct: number | null } {
+  const { entry, chasePct } = opportunity.conditions.levels;
+  if (entry === null || !Number.isFinite(entry) || entry <= 0) {
+    return { inBand: false, beyond: false, distancePct: null };
+  }
+  const chase = Math.max(0, chasePct ?? 0) / 100;
+  const distancePct = ((price - entry) / entry) * 100;
+  if (opportunity.direction === "bullish") {
+    return {
+      inBand: price >= entry && price <= entry * (1 + chase),
+      beyond: price > entry * (1 + chase),
+      distancePct,
+    };
+  }
+  return {
+    inBand: price <= entry && price >= entry * (1 - chase),
+    beyond: price < entry * (1 - chase),
+    distancePct,
+  };
+}
+
+/**
+ * Transitions that need only the underlying price, so they can run on a short
+ * cadence without fetching an option chain. Entry readiness still requires a
+ * verified chain and is intentionally excluded.
+ */
+function priceOnlyTransition(opportunity: OpportunityRecord, price: number): PriceTransition {
+  const unchanged: PriceTransition = { state: opportunity.state, events: [], note: null };
+  if (opportunity.state === "invalidated" || opportunity.state === "expired" || opportunity.state === "missed") {
+    return unchanged;
+  }
+  const levels = opportunity.conditions.levels;
+
+  if (CREDIT_STRATEGIES.has(opportunity.strategy)) {
+    const shortPut = levels.shortPut;
+    const shortCall = levels.shortCall;
+    const invalidated =
+      (shortPut !== null && price <= shortPut) || (shortCall !== null && price >= shortCall);
+    if (!invalidated) return unchanged;
+    return {
+      state: "invalidated",
+      events: [
+        {
+          type: "invalidated",
+          dedupeKey: `invalidated:${opportunity.id}`,
+          payload: { price, shortPut, shortCall },
+          notify: true,
+        },
+      ],
+      note: "Underlying crossed a frozen short strike",
+    };
+  }
+
+  if (levels.entry === null || levels.invalidation === null) return unchanged;
+  const bullish = opportunity.direction === "bullish";
+  const invalidated = bullish ? price <= levels.invalidation : price >= levels.invalidation;
+  if (invalidated) {
+    return {
+      state: "invalidated",
+      events: [
+        {
+          type: "invalidated",
+          dedupeKey: `invalidated:${opportunity.id}`,
+          payload: { price, invalidation: levels.invalidation },
+          notify: true,
+        },
+      ],
+      note: "Frozen invalidation level crossed",
+    };
+  }
+
+  if (opportunity.state === "watching") {
+    const band = chaseBand(opportunity, price);
+    if (band.beyond && band.distancePct !== null) {
+      return {
+        state: "missed",
+        events: [
+          {
+            type: "missed",
+            dedupeKey: `missed:${opportunity.id}`,
+            payload: {
+              price,
+              entry: levels.entry,
+              chasePct: levels.chasePct,
+              distancePct: band.distancePct,
+            },
+            notify: true,
+          },
+        ],
+        note: `Entry missed: price moved ${Math.abs(band.distancePct).toFixed(2)}% beyond the ${
+          levels.chasePct ?? 0
+        }% chase limit`,
+      };
+    }
+  }
+
+  return unchanged;
+}
+
 function directionalState(
   opportunity: OpportunityRecord,
   price: number,
@@ -204,9 +327,8 @@ function directionalState(
   const bullish = opportunity.direction === "bullish";
   const invalidated = bullish ? price <= levels.invalidation : price >= levels.invalidation;
   const chase = levels.chasePct ?? 0;
-  const entered = bullish
-    ? price >= levels.entry && price <= levels.entry * (1 + chase / 100)
-    : price <= levels.entry && price >= levels.entry * (1 - chase / 100);
+  const band = chaseBand(opportunity, price);
+  const entered = band.inBand;
   if (invalidated && entered) {
     return {
       state: opportunity.state,
@@ -228,6 +350,26 @@ function directionalState(
       ],
       ambiguous: false,
       note: null,
+    };
+  }
+  if (opportunity.state === "watching" && band.beyond && band.distancePct !== null) {
+    return {
+      state: "missed",
+      events: [
+        {
+          type: "missed",
+          dedupeKey: `missed:${opportunity.id}`,
+          payload: {
+            price,
+            entry: levels.entry,
+            chasePct: levels.chasePct,
+            distancePct: band.distancePct,
+          },
+          notify: true,
+        },
+      ],
+      ambiguous: false,
+      note: `Entry missed: price moved ${Math.abs(band.distancePct).toFixed(2)}% beyond the ${chase}% chase limit`,
     };
   }
   if (opportunity.state === "watching" && entered) {
@@ -648,6 +790,40 @@ export class ScannerEngine {
           });
           continue;
         }
+        if (quote.price === null) {
+          checks.push({
+            opportunityId: opportunity.id,
+            checkedAt: now.toISOString(),
+            health: "unable",
+            stateBefore: opportunity.state,
+            stateAfter: opportunity.state,
+            evidence: { reason: "Underlying price is unavailable" },
+            note: "Unable to assess",
+            events: [],
+          });
+          continue;
+        }
+        // Terminal price transitions do not depend on option quotes, so they
+        // are applied before the chain fetch and cannot be blocked by stale legs.
+        const priceOnly = priceOnlyTransition(opportunity, quote.price);
+        if (priceOnly.state !== opportunity.state) {
+          checks.push({
+            opportunityId: opportunity.id,
+            checkedAt: now.toISOString(),
+            health: "current",
+            stateBefore: opportunity.state,
+            stateAfter: priceOnly.state,
+            evidence: {
+              price: quote.price,
+              quoteTime: quote.quoteTime,
+              quoteSource: quote.source,
+              note: priceOnly.note,
+            },
+            note: priceOnly.note,
+            events: priceOnly.events,
+          });
+          continue;
+        }
         const chain = await cached(chains, `${opportunity.symbol}:${opportunity.expiry}`, () =>
           this.market.chain(opportunity.symbol, opportunity.expiry)
         );
@@ -665,25 +841,9 @@ export class ScannerEngine {
           });
           continue;
         }
-        if (quote.price === null) {
-          checks.push({
-            opportunityId: opportunity.id,
-            checkedAt: now.toISOString(),
-            health: "unable",
-            stateBefore: opportunity.state,
-            stateAfter: opportunity.state,
-            evidence: { reason: "Underlying price is unavailable" },
-            note: "Unable to assess",
-            events: [],
-          });
-          continue;
-        }
-        const transition =
-          opportunity.strategy === "iron_condor" ||
-          opportunity.strategy === "bull_put_credit" ||
-          opportunity.strategy === "bear_call_credit"
-            ? creditState(opportunity, quote.price, chain, now.toISOString())
-            : directionalState(opportunity, quote.price, now.toISOString());
+        const transition = CREDIT_STRATEGIES.has(opportunity.strategy)
+          ? creditState(opportunity, quote.price, chain, now.toISOString())
+          : directionalState(opportunity, quote.price, now.toISOString());
         const health = transition.ambiguous ? "unable" : "current";
         checks.push({
           opportunityId: opportunity.id,
@@ -718,6 +878,167 @@ export class ScannerEngine {
       }
     }
     return { checks, failures };
+  }
+
+  private async fastMonitoring(
+    config: ScannerConfig,
+    now: Date,
+    quotes: Cached<NormalizedQuote>,
+    chains: Cached<NormalizedChain>
+  ): Promise<{ checks: CheckInput[]; failures: string[] }> {
+    const checks: CheckInput[] = [];
+    const failures: string[] = [];
+
+    for (const opportunity of this.store.listActiveOpportunities()) {
+      if (Date.parse(opportunity.deadline) <= now.getTime()) continue;
+      try {
+        const quote = await cached(quotes, opportunity.symbol, () => this.market.quote(opportunity.symbol));
+        const qHealth = quoteHealth(quote, config, now);
+        if (qHealth.health !== "current" || quote.price === null) {
+          const health = qHealth.health === "current" ? "unable" : qHealth.health;
+          const note = qHealth.reason ?? "Underlying price is unavailable";
+          if (opportunity.currentHealth !== health || checkDue(opportunity, now)) {
+            checks.push({
+              opportunityId: opportunity.id,
+              checkedAt: now.toISOString(),
+              health,
+              stateBefore: opportunity.state,
+              stateAfter: opportunity.state,
+              evidence: { reason: note, quote },
+              note,
+              events: [],
+            });
+          }
+          continue;
+        }
+
+        const priceOnly = priceOnlyTransition(opportunity, quote.price);
+        if (priceOnly.state !== opportunity.state) {
+          checks.push({
+            opportunityId: opportunity.id,
+            checkedAt: now.toISOString(),
+            health: "current",
+            stateBefore: opportunity.state,
+            stateAfter: priceOnly.state,
+            evidence: {
+              price: quote.price,
+              quoteTime: quote.quoteTime,
+              quoteSource: quote.source,
+              note: priceOnly.note,
+            },
+            note: priceOnly.note,
+            events: priceOnly.events,
+          });
+          continue;
+        }
+
+        // Only setups sitting inside the entry band need the option chain; all
+        // other checks stay quote-only so the fast pass remains cheap.
+        const band =
+          opportunity.state === "watching" && !CREDIT_STRATEGIES.has(opportunity.strategy)
+            ? chaseBand(opportunity, quote.price)
+            : null;
+        if (band?.inBand) {
+          const chain = await cached(chains, `${opportunity.symbol}:${opportunity.expiry}`, () =>
+            this.market.chain(opportunity.symbol, opportunity.expiry)
+          );
+          const oHealth = optionHealth(opportunity, chain, config, now);
+          if (oHealth.health !== "current") {
+            checks.push({
+              opportunityId: opportunity.id,
+              checkedAt: now.toISOString(),
+              health: oHealth.health,
+              stateBefore: opportunity.state,
+              stateAfter: opportunity.state,
+              evidence: { reason: oHealth.reason, retrievedAt: chain.retrievedAt },
+              note: oHealth.reason,
+              events: [],
+            });
+            continue;
+          }
+          const transition = directionalState(opportunity, quote.price, now.toISOString());
+          checks.push({
+            opportunityId: opportunity.id,
+            checkedAt: now.toISOString(),
+            health: transition.ambiguous ? "unable" : "current",
+            stateBefore: opportunity.state,
+            stateAfter: transition.state,
+            evidence: {
+              price: quote.price,
+              quoteTime: quote.quoteTime,
+              quoteSource: quote.source,
+              optionRetrievedAt: chain.retrievedAt,
+              packageCredit: packageCredit(opportunity, chain),
+              note: transition.note,
+            },
+            note: transition.note,
+            events: transition.events,
+          });
+          continue;
+        }
+
+        if (checkDue(opportunity, now)) {
+          const note =
+            opportunity.state === "watching"
+              ? `Waiting for entry; last price ${quote.price.toFixed(2)}`
+              : "Monitoring; entry conditions unchanged";
+          checks.push({
+            opportunityId: opportunity.id,
+            checkedAt: now.toISOString(),
+            health: "current",
+            stateBefore: opportunity.state,
+            stateAfter: opportunity.state,
+            evidence: { price: quote.price, quoteTime: quote.quoteTime, quoteSource: quote.source, note },
+            note,
+            events: [],
+          });
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        failures.push(`${opportunity.symbol} fast monitoring: ${reason}`);
+        if (opportunity.currentHealth !== "unable" || checkDue(opportunity, now)) {
+          checks.push({
+            opportunityId: opportunity.id,
+            checkedAt: now.toISOString(),
+            health: "unable",
+            stateBefore: opportunity.state,
+            stateAfter: opportunity.state,
+            evidence: { reason },
+            note: "Unable to assess; lifecycle not changed",
+            events: [],
+          });
+        }
+      }
+    }
+
+    return { checks, failures };
+  }
+
+  /**
+   * Short-cadence quote pass for active setups. It can invalidate, mark an
+   * entry as missed, or confirm entry only when the underlying is in band and
+   * the legs verify; discovery and full monitoring stay on the scan cadence.
+   */
+  async runMonitoring(now = this.now()): Promise<MonitoringOutcome> {
+    const config = this.store.getConfig();
+    if (!config.enabled) return { status: "disabled" };
+    if (!scannerReadiness(config).ready) return { status: "configuration" };
+    if (!isRegularSessionOpen(now)) return { status: "market_closed" };
+
+    const owner = this.store.newOwner();
+    if (!this.store.acquireLease(owner, 120_000)) return { status: "overlap" };
+
+    const quotes: Cached<NormalizedQuote> = new Map();
+    const chains: Cached<NormalizedChain> = new Map();
+    try {
+      this.expireDeadlines(now);
+      const result = await this.fastMonitoring(config, now, quotes, chains);
+      for (const check of result.checks) this.store.appendCheck(check);
+      for (const failure of result.failures) this.logger(failure);
+      return { status: "completed", checks: result.checks.length };
+    } finally {
+      this.store.releaseLease(owner);
+    }
   }
 
   private async assessNewOrChanged(config: ScannerConfig): Promise<void> {
@@ -823,7 +1144,6 @@ export class ScannerEngine {
       for (const check of monitoring.checks) this.store.appendCheck(check);
       for (const observation of discovery.observations) this.store.recordIvObservation(observation);
 
-      await this.assessNewOrChanged(config);
       const qualified = created.length;
       this.store.finishRun(runId, {
         status: "completed",
@@ -833,6 +1153,16 @@ export class ScannerEngine {
         qualified,
         error: null,
       });
+      // The run is complete; release the scan lease so fast monitoring keeps
+      // running while the (slower, paid) AI assessments finish.
+      this.store.releaseLease(owner);
+      try {
+        await this.assessNewOrChanged(config);
+      } catch (error) {
+        this.logger(
+          `AI assessment phase failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
       return {
         status: "completed",
         runId,

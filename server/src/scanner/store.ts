@@ -80,7 +80,9 @@ export type IvSummary = {
   latestAt: string | null;
 };
 
-const MIGRATIONS: Array<{ version: number; sql: string }> = [
+type ScannerMigration = { version: number; sql: string; foreignKeysOff?: boolean };
+
+export const SCANNER_MIGRATIONS: ScannerMigration[] = [
   {
     version: 1,
     sql: `
@@ -227,23 +229,117 @@ CREATE TABLE scanner_lease (
 );
 `,
   },
+  {
+    // SQLite cannot alter a CHECK constraint in place. Add the terminal "missed"
+    // state by rebuilding the table; foreign keys must be off so the child
+    // tables are not cascade-deleted while the parent is replaced.
+    version: 2,
+    foreignKeysOff: true,
+    sql: `
+ALTER TABLE scanner_opportunities RENAME TO scanner_opportunities_v1;
+
+CREATE TABLE scanner_opportunities (
+  id TEXT PRIMARY KEY,
+  identity_key TEXT NOT NULL UNIQUE,
+  mute_key TEXT NOT NULL,
+  predecessor_id TEXT REFERENCES scanner_opportunities(id) ON DELETE SET NULL,
+  symbol TEXT NOT NULL,
+  horizon TEXT NOT NULL CHECK (horizon IN ('intraday','swing')),
+  strategy TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('bullish','bearish','neutral')),
+  recipe_id TEXT NOT NULL,
+  recipe_version TEXT NOT NULL,
+  expiry TEXT NOT NULL,
+  deadline TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('watching','entry_ready','invalidated','expired','missed')),
+  data_health TEXT NOT NULL CHECK (data_health IN ('current','stale','unable')),
+  pinned INTEGER NOT NULL DEFAULT 0,
+  dismissed INTEGER NOT NULL DEFAULT 0,
+  muted INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  watchlist_decision TEXT NOT NULL DEFAULT 'monitor' CHECK (watchlist_decision IN ('monitor','archive','pending')),
+  config_revision INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_checked_at TEXT,
+  legs_json TEXT NOT NULL,
+  risk_json TEXT NOT NULL,
+  signal_json TEXT NOT NULL,
+  conditions_json TEXT NOT NULL,
+  thesis TEXT NOT NULL,
+  earnings_json TEXT NOT NULL,
+  current_evidence_json TEXT,
+  ai_status TEXT NOT NULL DEFAULT 'pending' CHECK (ai_status IN ('pending','ready','failed','unavailable'))
+);
+
+INSERT INTO scanner_opportunities (
+  id, identity_key, mute_key, predecessor_id, symbol, horizon, strategy, direction, recipe_id,
+  recipe_version, expiry, deadline, state, data_health, pinned, dismissed, muted, archived,
+  watchlist_decision, config_revision, created_at, updated_at, last_checked_at, legs_json, risk_json,
+  signal_json, conditions_json, thesis, earnings_json, current_evidence_json, ai_status
+)
+SELECT
+  id, identity_key, mute_key, predecessor_id, symbol, horizon, strategy, direction, recipe_id,
+  recipe_version, expiry, deadline, state, data_health, pinned, dismissed, muted, archived,
+  watchlist_decision, config_revision, created_at, updated_at, last_checked_at, legs_json, risk_json,
+  signal_json, conditions_json, thesis, earnings_json, current_evidence_json, ai_status
+FROM scanner_opportunities_v1;
+
+DROP TABLE scanner_opportunities_v1;
+
+CREATE INDEX scanner_opportunities_symbol_idx ON scanner_opportunities(symbol, created_at DESC);
+CREATE INDEX scanner_opportunities_horizon_state_idx ON scanner_opportunities(horizon, state, created_at DESC);
+CREATE INDEX scanner_opportunities_mute_idx ON scanner_opportunities(mute_key, created_at DESC);
+CREATE INDEX scanner_opportunities_deadline_idx ON scanner_opportunities(deadline);
+`,
+  },
 ];
+
+function applyMigration(database: Database.Database, migration: ScannerMigration) {
+  const record = () =>
+    database
+      .prepare("INSERT INTO scanner_schema_migrations (version, applied_at) VALUES (?, ?)")
+      .run(migration.version, new Date().toISOString());
+
+  if (!migration.foreignKeysOff) {
+    database.transaction(() => {
+      database.exec(migration.sql);
+      record();
+    })();
+    return;
+  }
+
+  // PRAGMA foreign_keys is a no-op inside a transaction, so toggle it around it.
+  // legacy_alter_table keeps the rename from rewriting child REFERENCES clauses.
+  database.pragma("foreign_keys = OFF");
+  database.pragma("legacy_alter_table = ON");
+  try {
+    database.transaction(() => {
+      database.exec(migration.sql);
+      const violations = database.pragma("foreign_key_check") as unknown[];
+      if (Array.isArray(violations) && violations.length > 0) {
+        throw new Error(
+          `scanner migration ${migration.version} left ${violations.length} foreign-key violation(s)`
+        );
+      }
+      record();
+    })();
+  } finally {
+    database.pragma("legacy_alter_table = OFF");
+    database.pragma("foreign_keys = ON");
+  }
+}
 
 function migrate(database: Database.Database) {
   database.exec(
     "CREATE TABLE IF NOT EXISTS scanner_schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
   );
-  for (const migration of MIGRATIONS) {
+  for (const migration of SCANNER_MIGRATIONS) {
     const exists = database
       .prepare("SELECT version FROM scanner_schema_migrations WHERE version = ?")
       .get(migration.version);
     if (exists) continue;
-    database.transaction(() => {
-      database.exec(migration.sql);
-      database
-        .prepare("INSERT INTO scanner_schema_migrations (version, applied_at) VALUES (?, ?)")
-        .run(migration.version, new Date().toISOString());
-    })();
+    applyMigration(database, migration);
   }
 }
 
@@ -478,6 +574,9 @@ export class ScannerStore {
           )
           .run(row.started_at, endedAt, "Interrupted scan run recovered after restart");
       }
+      // A restart means no process owns the run that was in flight; drop its
+      // lease immediately instead of waiting for the TTL to expire.
+      this.database.prepare("DELETE FROM scanner_lease").run();
     });
     transaction();
     return rows.length;
@@ -515,7 +614,7 @@ export class ScannerStore {
     const row = this.database
       .prepare(
         `SELECT * FROM scanner_opportunities
-         WHERE mute_key = ? AND state IN ('invalidated','expired') AND created_at > ?
+         WHERE mute_key = ? AND state IN ('invalidated','expired','missed') AND created_at > ?
          ORDER BY created_at DESC LIMIT 1`
       )
       .get(muteKey, after);
@@ -533,7 +632,7 @@ export class ScannerStore {
       .prepare(
         `SELECT * FROM scanner_opportunities
          WHERE recipe_id = ? AND symbol = ? AND horizon = ? AND direction = ?
-           AND state IN ('invalidated','expired') AND created_at > ?
+           AND state IN ('invalidated','expired','missed') AND created_at > ?
          ORDER BY created_at DESC LIMIT 1`
       )
       .get(recipeId, symbol, horizon, direction, after);

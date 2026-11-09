@@ -209,6 +209,72 @@ describe("scanner engine", () => {
     expect(store.notifications().filter((notification) => notification.type === "invalidated")).toHaveLength(2);
   });
 
+  it("marks an entry as missed when price leaves the chase band before entry", async () => {
+    const config = readyConfig();
+    store.saveConfig(config, true);
+    const market = fakeMarket();
+    const engine = new ScannerEngine({
+      store,
+      market,
+      now: () => now,
+      assess: vi.fn(async (candidate: any) => assessment(candidate.identityKey)),
+    });
+    await engine.runScan("scheduled");
+    expect(store.listActiveOpportunities()).toHaveLength(2);
+
+    // Entry is ~100.10 with a 0.35% chase band; 101 is beyond it.
+    price = 101;
+    now = new Date("2026-11-02T15:05:00Z");
+    await engine.runScan("scheduled");
+
+    expect(store.listActiveOpportunities()).toHaveLength(0);
+    const missed = store
+      .listOpportunities({ includeHistory: true })
+      .filter((opportunity) => opportunity.state === "missed");
+    expect(missed).toHaveLength(2);
+    expect(store.notifications().filter((notification) => notification.type === "missed")).toHaveLength(2);
+    expect(store.checks(missed[0].id).at(-1)?.note).toContain("Entry missed");
+  });
+
+  it("runs a quote-only monitoring pass between scans and only fetches chains in band", async () => {
+    const config = readyConfig();
+    store.saveConfig(config, true);
+    const market = fakeMarket();
+    const engine = new ScannerEngine({
+      store,
+      market,
+      now: () => now,
+      assess: vi.fn(async (candidate: any) => assessment(candidate.identityKey)),
+    });
+    await engine.runScan("scheduled");
+
+    const chainMock = vi.mocked(market.chain);
+    chainMock.mockClear();
+
+    // Outside the entry band: no chain fetch, state unchanged, no notification.
+    price = 100;
+    now = new Date("2026-11-02T15:00:30Z");
+    await engine.runMonitoring(now);
+    expect(chainMock).not.toHaveBeenCalled();
+    expect(store.listActiveOpportunities().every((opportunity) => opportunity.state === "watching")).toBe(true);
+
+    // Inside the band: fetch the chain, verify the legs, transition once.
+    price = 100.2;
+    now = new Date("2026-11-02T15:01:00Z");
+    const outcome = await engine.runMonitoring(now);
+    expect(outcome.status).toBe("completed");
+    expect(chainMock).toHaveBeenCalledTimes(1);
+    expect(store.listActiveOpportunities().every((opportunity) => opportunity.state === "entry_ready")).toBe(true);
+    expect(store.notifications().filter((notification) => notification.type === "entry_ready")).toHaveLength(2);
+
+    // Routine checks are throttled, so a second pass within five minutes adds nothing.
+    const first = store.listActiveOpportunities()[0];
+    const before = store.checks(first.id).length;
+    now = new Date("2026-11-02T15:01:30Z");
+    await engine.runMonitoring(now);
+    expect(store.checks(first.id)).toHaveLength(before);
+  });
+
   it("permits only one overlapping run through the database lease", async () => {
     const config = readyConfig();
     store.saveConfig(config, true);

@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultScannerConfig } from "./config.js";
-import { ScannerStore } from "./store.js";
+import { SCANNER_MIGRATIONS, ScannerStore } from "./store.js";
 import type { OpportunityCandidate } from "./types.js";
 
 let db: Database.Database;
@@ -189,6 +189,90 @@ describe("scanner persistence", () => {
     expect(store.recentRuns()[0].status).toBe("interrupted");
     expect(store.monitoringGaps()).toHaveLength(1);
     expect(store.recentRuns()[0].id).toBe(run);
+    // Recovery drops the dead process's lease instead of blocking for its TTL.
+    expect(store.acquireLease("three", 60_000)).toBe(true);
+  });
+
+  it("accepts the terminal missed state and emits its alert once", () => {
+    const record = store.persistDiscovery(candidate("identity-missed"), 1, null, "unavailable").record;
+    const check = {
+      opportunityId: record.id,
+      checkedAt: "2026-11-03T15:00:00.000Z",
+      health: "current" as const,
+      stateBefore: "watching" as const,
+      stateAfter: "missed" as const,
+      evidence: { price: 101, entry: 100.1 },
+      note: "Entry missed",
+      events: [
+        {
+          type: "missed" as const,
+          dedupeKey: `missed:${record.id}`,
+          payload: { price: 101 },
+          notify: true,
+        },
+      ],
+    };
+    store.appendCheck(check);
+    store.appendCheck({ ...check, checkedAt: "2026-11-03T15:05:00.000Z" });
+    expect(store.findById(record.id)?.state).toBe("missed");
+    expect(store.listActiveOpportunities()).toHaveLength(0);
+    expect(store.notifications().filter((notification) => notification.type === "missed")).toHaveLength(1);
+    expect(store.latestTerminalForFamily("TREND-PULLBACK", "AAPL", "swing", "bullish", "2026-11-01T00:00:00.000Z")?.id).toBe(
+      record.id
+    );
+  });
+
+  it("upgrades a version-1 database without losing history", () => {
+    const legacy = new Database(":memory:");
+    legacy.pragma("foreign_keys = ON");
+    legacy.exec(
+      "CREATE TABLE scanner_schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+    );
+    legacy.exec(SCANNER_MIGRATIONS[0].sql);
+    legacy
+      .prepare("INSERT INTO scanner_schema_migrations (version, applied_at) VALUES (1, ?)")
+      .run("2026-11-01T00:00:00.000Z");
+    legacy
+      .prepare(
+        `INSERT INTO scanner_opportunities (
+           id, identity_key, mute_key, predecessor_id, symbol, horizon, strategy, direction,
+           recipe_id, recipe_version, expiry, deadline, state, data_health, pinned, dismissed,
+           muted, archived, watchlist_decision, config_revision, created_at, updated_at,
+           last_checked_at, legs_json, risk_json, signal_json, conditions_json, thesis,
+           earnings_json, current_evidence_json, ai_status
+         ) VALUES (
+           'legacy', 'legacy', 'legacy-mute', NULL, 'AAPL', 'swing', 'long_call', 'bullish',
+           'TREND-PULLBACK', '1.0.0', '2026-11-20', '2026-11-20T14:30:00.000Z', 'watching',
+           'current', 0, 0, 0, 0, 'monitor', 1, '2026-11-02T15:00:00.000Z',
+           '2026-11-02T15:00:00.000Z', NULL, '[]', '{}', '{}', '{}', 't', '{}', NULL, 'unavailable'
+         )`
+      )
+      .run();
+    legacy
+      .prepare(
+        `INSERT INTO scanner_opportunity_checks
+           (opportunity_id, checked_at, health, state_before, state_after, evidence_json, note)
+         VALUES ('legacy', '2026-11-02T15:05:00.000Z', 'current', 'watching', 'watching', '{}', 'kept')`
+      )
+      .run();
+
+    const upgraded = new ScannerStore(legacy);
+    expect(upgraded.findById("legacy")?.state).toBe("watching");
+    expect(upgraded.checks("legacy")).toHaveLength(1);
+    expect(upgraded.checks("legacy")[0].note).toBe("kept");
+
+    upgraded.appendCheck({
+      opportunityId: "legacy",
+      checkedAt: "2026-11-02T15:10:00.000Z",
+      health: "current",
+      stateBefore: "watching",
+      stateAfter: "missed",
+      evidence: {},
+      note: "Entry missed",
+      events: [],
+    });
+    expect(upgraded.findById("legacy")?.state).toBe("missed");
+    legacy.close();
   });
 
   it("starts with scanner disabled and no accepted configuration", () => {

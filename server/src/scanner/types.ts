@@ -9,7 +9,12 @@ export type RecipeId =
 
 export type Horizon = "intraday" | "swing";
 export type Direction = "bullish" | "bearish" | "neutral";
-export type OpportunityState = "watching" | "entry_ready" | "invalidated" | "expired";
+export type OpportunityState =
+  | "watching"
+  | "entry_ready"
+  | "invalidated"
+  | "expired"
+  | "missed";
 export type DataHealth = "current" | "stale" | "unable";
 export type WatchlistDecision = "monitor" | "archive" | "pending";
 
@@ -238,7 +243,7 @@ export type OpportunityCheck = {
 export type ScannerEvent = {
   id: number;
   opportunityId: string;
-  type: "discovery" | "entry_ready" | "invalidated" | "target_observed" | "watchlist_removed_pending";
+  type: "discovery" | "entry_ready" | "invalidated" | "target_observed" | "watchlist_removed_pending" | "missed";
   dedupeKey: string;
   createdAt: string;
   payload: Record<string, unknown>;
