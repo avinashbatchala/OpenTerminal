@@ -50,7 +50,7 @@ type EmptyNotice = {
 
 const HORIZONS: Horizon[] = ["intraday", "swing"];
 const ACTIVE_STATES = new Set(["watching", "entry_ready"]);
-const TERMINAL_STATES = new Set(["invalidated", "expired"]);
+const TERMINAL_STATES = new Set(["invalidated", "expired", "missed"]);
 
 function directionClass(direction: string) {
   return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "dim";
@@ -753,6 +753,7 @@ export default function OpportunitiesPage() {
                       <option value="entry_ready">Entry ready</option>
                       <option value="invalidated">Invalidated</option>
                       <option value="expired">Expired</option>
+                      <option value="missed">Missed</option>
                     </select>
                   </div>
 

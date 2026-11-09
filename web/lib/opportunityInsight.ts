@@ -70,6 +70,15 @@ export function tradeAction(opportunity: Opportunity, now = Date.now()): TradeAc
     };
   }
 
+  if (opportunity.state === "missed") {
+    return {
+      title: "Entry missed",
+      directive: "No action",
+      detail: "Price moved beyond the chase limit before entry was confirmed. Wait for a new signal rather than chasing this one.",
+      tone: "down",
+    };
+  }
+
   if (opportunity.state === "invalidated") {
     return {
       title: "Invalidated",
