@@ -24,6 +24,7 @@ export class ExecutionScheduler {
     if (recovered > 0) {
       console.warn(`[execution] recovery: cancelled ${recovered} pending paper trade(s)`);
     }
+    this.engine.startLiveMarks();
     this.timer = setInterval(() => {
       void this.tick();
     }, this.intervalMs);
@@ -32,6 +33,7 @@ export class ExecutionScheduler {
   }
 
   stop(): void {
+    this.engine.stopLiveMarks();
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }

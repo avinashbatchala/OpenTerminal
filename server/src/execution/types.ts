@@ -77,6 +77,13 @@ export type EquitySnapshot = {
   equityUsd: number;
 };
 
+export type ExecutionLiveStatus = {
+  /** True when Schwab's option quote stream is connected. */
+  streaming: boolean;
+  source: "stream" | "poll" | null;
+  lastMarkAt: string | null;
+};
+
 export type ExecutionEvent = {
   id: number;
   tradeId: string | null;
@@ -103,12 +110,40 @@ export type SetupSource = {
   listEntryReady(): OpportunityRecord[];
 };
 
+/**
+ * Minimal option-quote source consumed by the execution engine. The Schwab
+ * streamer implements the shape; a fake is used in tests and a polling source
+ * can be supplied without changing the engine.
+ */
+export type OptionQuote = {
+  symbol: string;
+  bid: number | null;
+  ask: number | null;
+  last?: number | null;
+  quoteTime: number | null;
+  multiplier: number | null;
+  underlyingPrice: number | null;
+};
+
+export type OptionQuoteSource = {
+  /** Replace `listener`'s symbol set with `symbols`. */
+  subscribe(symbols: string[], listener: (quote: OptionQuote) => void): void;
+  unsubscribe(listener: (quote: OptionQuote) => void): void;
+  /** Whether the upstream stream is currently connected. */
+  streaming?(): boolean;
+};
+
+export type ExecutionMarkEvent =
+  | { type: "mark"; mark: ExecutionMark }
+  | { type: "equity"; equity: EquitySnapshot };
+
 export type ExecutionStatus = {
   config: ExecutionConfig;
   counts: Record<ExecutionTradeStatus, number>;
   openTrades: ExecutionTrade[];
   latestMarks: Record<string, ExecutionMark | null>;
   equity: EquitySnapshot | null;
+  live: ExecutionLiveStatus;
   broker:
     | { ok: true; cashUsd: number; positions: readonly BrokerPosition[] }
     | { ok: false; error: BrokerError };

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { useLiveExecution } from "../../lib/liveExecution";
 import {
   dayChangeUsd,
   entryPremiumUsd,
@@ -245,17 +246,19 @@ function PaperSettings({
 
 function TradeDetail({
   detail,
+  liveMark,
   onClose,
   onCloseTrade,
   closing,
 }: {
   detail: ExecutionDetail;
+  liveMark: ExecutionMark | null;
   onClose: () => void;
   onCloseTrade: () => void;
   closing: boolean;
 }) {
   const trade = detail.trade;
-  const latestMark: ExecutionMark | null = detail.marks[0] ?? null;
+  const latestMark: ExecutionMark | null = liveMark ?? detail.marks[0] ?? null;
 
   return (
     <div className="paper-detail">
@@ -399,6 +402,7 @@ function TradeDetail({
 
 export default function PaperWidget() {
   const queryClient = useQueryClient();
+  const liveExecution = useLiveExecution();
   const [tab, setTab] = useState<Tab>("open");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -406,19 +410,19 @@ export default function PaperWidget() {
   const statusQuery = useQuery({
     queryKey: ["execution", "status"],
     queryFn: () => apiGet<ExecutionStatus>("/api/execution/status", { timeoutMs: 8_000 }),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
     retry: 0,
   });
   const tradesQuery = useQuery({
     queryKey: ["execution", "trades"],
     queryFn: () => apiGet<ExecutionTrade[]>("/api/execution/trades?limit=200", { timeoutMs: 8_000 }),
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
     retry: 0,
   });
   const equityQuery = useQuery({
     queryKey: ["execution", "equity"],
     queryFn: () => apiGet<EquityPayload>("/api/execution/equity?limit=200", { timeoutMs: 8_000 }),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
     retry: 0,
   });
   const detailQuery = useQuery({
@@ -456,8 +460,11 @@ export default function PaperWidget() {
   const historyTrades = trades.filter((trade) =>
     ["closed", "rejected", "cancelled"].includes(trade.status)
   );
-  const equity: EquitySnapshot | null = equityQuery.data?.latest ?? status?.equity ?? null;
-  const dayChange = dayChangeUsd(equityQuery.data?.history ?? []);
+  const history = equityQuery.data?.history ?? [];
+  const equity: EquitySnapshot | null = liveExecution.equity ?? equityQuery.data?.latest ?? status?.equity ?? null;
+  const dayChange = dayChangeUsd(
+    equity ? [equity, ...history.filter((row) => row.asOf !== equity.asOf)] : history
+  );
   const realized = closedTrades.reduce((sum, trade) => sum + (trade.pnl?.netUsd ?? 0), 0);
 
   return (
@@ -528,8 +535,32 @@ export default function PaperWidget() {
               HISTORY {historyTrades.length}
             </button>
           </div>
-          <span className="dim text-[10px]">
-            {statusQuery.isFetching || tradesQuery.isFetching ? "updating…" : "next tick ≤30s"}
+          <span className="flex items-center gap-2">
+            <span
+              className={`${
+                liveExecution.connected && liveExecution.live.streaming
+                  ? "up"
+                  : liveExecution.connected
+                    ? "amber"
+                    : "dim"
+              } text-[10px]`}
+              title={
+                !liveExecution.connected
+                  ? "Live marks connection unavailable; REST polling is still active"
+                  : liveExecution.live.streaming
+                    ? "Schwab option stream connected"
+                    : "Polling open option chains for marks"
+              }
+            >
+              {liveExecution.connected && liveExecution.live.streaming
+                ? "● LIVE"
+                : liveExecution.connected
+                  ? "● POLLING"
+                  : "○ OFFLINE"}
+            </span>
+            <span className="dim text-[10px]">
+              {statusQuery.isFetching || tradesQuery.isFetching ? "updating…" : "auto ≤30s"}
+            </span>
           </span>
         </div>
       </header>
@@ -549,7 +580,7 @@ export default function PaperWidget() {
         ) : (
           <div className="paper-list">
             {openTrades.map((trade) => {
-              const mark = status?.latestMarks?.[trade.id] ?? null;
+              const mark = liveExecution.marks[trade.id] ?? status?.latestMarks?.[trade.id] ?? null;
               const pnl = unrealizedUsd(trade, mark);
               return (
                 <button
@@ -649,6 +680,7 @@ export default function PaperWidget() {
           ) : detailQuery.data ? (
             <TradeDetail
               detail={detailQuery.data}
+              liveMark={liveExecution.marks[selectedId] ?? null}
               onClose={() => setSelectedId(null)}
               onCloseTrade={() => closeTrade.mutate(selectedId)}
               closing={closeTrade.isPending}

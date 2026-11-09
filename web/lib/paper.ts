@@ -135,12 +135,19 @@ export type EquitySnapshot = {
   equityUsd: number;
 };
 
+export type ExecutionLiveStatus = {
+  streaming: boolean;
+  source: "stream" | "poll" | null;
+  lastMarkAt: string | null;
+};
+
 export type ExecutionStatus = {
   config: ExecutionConfig;
   counts: Record<ExecutionTradeStatus, number>;
   openTrades: ExecutionTrade[];
   latestMarks: Record<string, ExecutionMark | null>;
   equity: EquitySnapshot | null;
+  live?: ExecutionLiveStatus;
   broker:
     | {
         ok: true;

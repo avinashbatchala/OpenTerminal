@@ -6,7 +6,7 @@ import {
   mapSchwabQuote,
   mapSchwabSearch,
 } from "./schwab.js";
-import { parseChartEquity, parseLevelOne } from "./schwabStreamer.js";
+import { parseChartEquity, parseLevelOne, parseLevelOneOption } from "./schwabStreamer.js";
 
 describe("Schwab history interval", () => {
   it("uses the default one-minute frequency for a 1D chart", () => {
@@ -188,8 +188,43 @@ describe("Schwab streamer frame parsing", () => {
     });
   });
 
+  it("parses LEVELONE_OPTIONS bid/ask and underlying fields", () => {
+    const numeric = parseLevelOneOption({
+      key: "AAPL  261120C00100000",
+      "2": 1.15,
+      "3": 1.25,
+      "4": 1.2,
+      "13": 100,
+      "35": 101.4,
+      "38": 1_760_000_000_000,
+    });
+    expect(numeric).toEqual({
+      symbol: "AAPL  261120C00100000",
+      bid: 1.15,
+      ask: 1.25,
+      last: 1.2,
+      multiplier: 100,
+      underlyingPrice: 101.4,
+      quoteTime: 1_760_000_000,
+    });
+
+    const named = parseLevelOneOption({
+      key: "MSFT  261120P00500000",
+      BID_PRICE: 3.1,
+      ASK_PRICE: 3.3,
+      UNDERLYING_PRICE: 498,
+    });
+    expect(named).toMatchObject({
+      symbol: "MSFT  261120P00500000",
+      bid: 3.1,
+      ask: 3.3,
+      underlyingPrice: 498,
+    });
+  });
+
   it("ignores frames without a symbol", () => {
     expect(parseLevelOne({ "3": 10 })).toBeNull();
+    expect(parseLevelOneOption({ "2": 1, "3": 1.1 })).toBeNull();
   });
 
   it("parses CHART_EQUITY numeric and named frames", () => {

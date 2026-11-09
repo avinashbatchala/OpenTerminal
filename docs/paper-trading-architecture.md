@@ -1,8 +1,9 @@
 # Paper trading execution architecture
 
-Status: **P0 + P1 + P2 + P3 implemented** (broker port, order lifecycle, paper
-fill model, contract tests, SQLite store, execution engine, manual enter/close
-API, automation scheduler, exit rules, marks/equity, and the dashboard UI).
+Status: **P0 + P1 + P2 + P3 + P4 implemented** (broker port, order lifecycle,
+paper fill model, contract tests, SQLite store, execution engine, manual
+enter/close API, automation scheduler, exit rules, marks/equity, live streamed
+marks, and the dashboard UI).
 
 ## Invariant
 
@@ -96,11 +97,38 @@ Defaults: automation entries **off**, exits on, 50% profit target, 1× stop,
 no time stop, full-spread fills with a 50% slippage cap (cheap options have wide
 relative spreads).
 
+## Live marks (P4)
+
+`ExecutionEngine.startLiveMarks()` runs independently of automation, inside a
+regular session, whenever there are open trades. This is what makes unrealized
+P&L move while automation is paused.
+
+- With Schwab configured, the engine subscribes the open contracts to
+  `LEVELONE_OPTIONS` through `OptionQuoteSource`. `schwabStreamer` keeps one
+  upstream WebSocket and fans partial bid/ask frames out to the engine.
+- Each quote recomputes the package close at the touch and publishes an
+  in-memory `ExecutionMark`. Marks are broadcast over SSE at most every 750ms
+  and persisted at most every 5s; equity is broadcast every 2s and persisted
+  every 10s.
+- If the option feed is unavailable (or a contract has no fresh quote), the
+  engine polls that trade's chain through `market.chain(..., { fresh: true })`,
+  which bypasses the route's 60-second options cache. Polling is limited to two
+  chains per 15s pass and rotates across open trades.
+- `GET /api/stream/execution` (SSE, authenticated) sends an initial `snapshot`
+  followed by `mark` and `equity` events, plus a snapshot every 5s. The browser
+  uses one `EventSource` in `web/lib/liveExecution.ts`; the Paper widget keeps
+  its 10s REST polling as a fallback.
+- `getStatus()` merges the newest in-memory marks over the persisted ones, so
+  the first render after a refresh is already current.
+
+The stream is optional. Without Schwab the same UI shows `POLLING`, and the
+scheduler/automation still works exactly as before.
+
 Restart recovery clears the execution lease and cancels `pending_entry` /
 `pending_exit` paper trades, because the in-memory paper broker cannot resume
 orders. A live adapter will reconcile with `BrokerPort.snapshot()` instead.
 
-## API (P1 + P2)
+## API (P1 + P2 + P4)
 
 All routes are authenticated (`x-api-key`) under `/api/execution`:
 
@@ -114,6 +142,9 @@ All routes are authenticated (`x-api-key`) under `/api/execution`:
 - `PUT /config` — zod-validated automation, exit, slippage, fee and limit
   settings; automation stays inert until `enabled` is true.
 - `GET /equity?limit=` — latest and historical equity snapshots.
+- `GET /api/stream/execution` — SSE marks/equity for open paper trades
+  (`snapshot`, `mark`, `equity`). Authenticated by the shared key through the
+  Next proxy; no Schwab requirement.
 
 ## UI (P3)
 
@@ -127,7 +158,9 @@ All routes are authenticated (`x-api-key`) under `/api/execution`:
 - **Opportunities widget**: setups with a paper trade show a `PAPER` badge;
   the detail header offers `PAPER` (entry) or `CLOSE PAPER` (exit) and surfaces
   API errors inline.
-- Equity and marks refresh every 30–60s; all numbers are simulated.
+- Marks update live: `● LIVE` means the Schwab option stream is connected,
+  `● POLLING` means the engine is polling chains, and `○ OFFLINE` falls back to
+  the widget's 10s REST query. All numbers are simulated.
 
 ## Adding a live broker
 

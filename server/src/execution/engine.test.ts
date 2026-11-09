@@ -371,6 +371,94 @@ describe("execution automation", () => {
     expect(equity?.equityUsd).toBeCloseTo(99_979.2);
   });
 
+  it("marks open trades from streamed option quotes and broadcasts updates", async () => {
+    let listener: ((quote: Record<string, unknown>) => void) | null = null;
+    let subscribed: string[] = [];
+    const optionQuotes = {
+      subscribe: (symbols: string[], next: (quote: Record<string, unknown>) => void) => {
+        subscribed = [...symbols];
+        listener = next;
+      },
+      unsubscribe: () => {
+        listener = null;
+      },
+      streaming: () => true,
+    };
+    let chainCalls = 0;
+    const market = {
+      chain: async () => {
+        chainCalls += 1;
+        return chain();
+      },
+    } as unknown as ScannerMarketData;
+    const liveEngine = new ExecutionEngine({
+      store,
+      broker: createPaperBroker({
+        fill: (request, at) =>
+          modelFill({
+            request,
+            quotes: new Map([
+              [
+                CONTRACT,
+                {
+                  contractSymbol: CONTRACT,
+                  bid: Math.max(0.05, ask - 0.2),
+                  ask,
+                  quoteTime: at.toISOString(),
+                  multiplier: 100,
+                },
+              ],
+            ]),
+            now: at,
+            config: FILL_CONFIG,
+            seed: request.clientOrderId,
+          }),
+        now: () => NOW,
+        startingCashUsd: 100_000,
+      }),
+      market,
+      setups: {
+        find: (id) => (id === setup.id ? setup : null),
+        listEntryReady: () => entryCandidates,
+      },
+      optionQuotes,
+      now: () => NOW,
+    });
+
+    const entered = await liveEngine.enter(setup.id);
+    if (!entered.ok) throw new Error("enter failed");
+    const chainCallsAfterEntry = chainCalls;
+    expect(subscribed).toEqual([CONTRACT]);
+    expect(listener).not.toBeNull();
+
+    const events: string[] = [];
+    const unsubscribe = liveEngine.subscribeMarks((event) => events.push(event.type));
+    (listener as unknown as (quote: Record<string, unknown>) => void)({
+      symbol: CONTRACT,
+      bid: 1.4,
+      ask: 1.5,
+      quoteTime: 1_760_000_000,
+      multiplier: 100,
+      underlyingPrice: 101,
+    });
+
+    const status = await liveEngine.status();
+    expect(status.latestMarks[entered.value.id]?.liquidationValueUsd).toBeCloseTo(140);
+    expect(status.live).toMatchObject({ streaming: true, source: "stream" });
+    expect(events).toContain("mark");
+    // The first live mark persists immediately; later ticks are throttled.
+    expect(store.listMarks(entered.value.id)).toHaveLength(1);
+
+    enable();
+    const outcome = await liveEngine.automate(NOW);
+    expect(outcome.marks).toBe(1);
+    expect(store.latestEquity()?.positionsUsd).toBeCloseTo(140);
+    expect(chainCalls).toBe(chainCallsAfterEntry);
+
+    unsubscribe();
+    liveEngine.stop();
+  });
+
   it("cancels pending paper trades on recovery and clears the lease", async () => {
     const trade = store.createTrade({
       id: "recover-1",

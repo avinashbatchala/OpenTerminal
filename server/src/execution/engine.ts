@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { mapWithConcurrency } from "../concurrency.js";
+import { sessionState } from "../scanner/calendar.js";
 import type { NormalizedChain, ScannerMarketData } from "../scanner/market.js";
 import type { OpportunityRecord, ScannerLeg } from "../scanner/types.js";
 import type {
@@ -19,11 +21,17 @@ import { packageLimitPrice, packageTouchPrice, quotesFromChain } from "./pricing
 import type { ExecutionStore } from "./store.js";
 import type {
   AutomationOutcome,
+  EquitySnapshot,
   ExecutionError,
+  ExecutionLiveStatus,
+  ExecutionMark,
+  ExecutionMarkEvent,
   ExecutionResult,
   ExecutionStatus,
   ExecutionTrade,
   ExecutionTradeStatus,
+  OptionQuote,
+  OptionQuoteSource,
   SetupSource,
 } from "./types.js";
 
@@ -32,11 +40,23 @@ export type ExecutionEngineOptions = {
   broker: BrokerPort;
   market: ScannerMarketData;
   setups: SetupSource;
+  /**
+   * Optional live option quotes. When present, marks update on each quote and
+   * the engine falls back to polling the chain when quotes go stale.
+   */
+  optionQuotes?: OptionQuoteSource;
   now?: () => Date;
   logger?: (message: string) => void;
 };
 
 const LEASE_MS = 30_000;
+const LIVE_MARK_INTERVAL_MS = 5_000;
+const LIVE_QUOTE_MAX_AGE_MS = 30_000;
+const LIVE_POLL_INTERVAL_MS = 15_000;
+const MARK_BROADCAST_MS = 750;
+const MARK_PERSIST_MS = 5_000;
+const EQUITY_BROADCAST_MS = 2_000;
+const EQUITY_PERSIST_MS = 10_000;
 
 function brokerIdOf(state: OrderState): string | null {
   if (!("brokerOrderId" in state)) return null;
@@ -79,23 +99,96 @@ export class ExecutionEngine {
   private readonly broker: BrokerPort;
   private readonly market: ScannerMarketData;
   private readonly setups: SetupSource;
+  private readonly optionQuotes?: OptionQuoteSource;
   private readonly now: () => Date;
   private readonly logger: (message: string) => void;
   private readonly unsubscribe: () => void;
   private readonly exitReasons = new Map<string, ExitReason>();
+
+  private readonly liveQuotes = new Map<
+    string,
+    { quote: OptionQuote; seenAt: number }
+  >();
+  private readonly liveMarks = new Map<string, ExecutionMark>();
+  private readonly markListeners = new Set<(event: ExecutionMarkEvent) => void>();
+  private readonly lastBroadcastAt = new Map<string, number>();
+  private readonly lastPersistAt = new Map<string, number>();
+  private readonly subscribedOptionSymbols = new Set<string>();
+  private readonly onOptionQuote = (quote: OptionQuote) => this.handleOptionQuote(quote);
+
+  private liveTimer: NodeJS.Timeout | null = null;
+  private liveBusy = false;
+  private equityBusy = false;
+  private lastPollAt = 0;
+  private pollCursor = 0;
+  private lastEquityAt = 0;
+  private lastEquityPersistAt = 0;
+  private liveEquity: EquitySnapshot | null = null;
+  private lastMarkSource: "stream" | "poll" | null = null;
 
   constructor(options: ExecutionEngineOptions) {
     this.store = options.store;
     this.broker = options.broker;
     this.market = options.market;
     this.setups = options.setups;
+    this.optionQuotes = options.optionQuotes;
     this.now = options.now ?? (() => new Date());
     this.logger = options.logger ?? ((message) => console.warn(`[execution] ${message}`));
     this.unsubscribe = this.broker.subscribe((update) => this.handleUpdate(update));
   }
 
   stop(): void {
+    this.stopLiveMarks();
     this.unsubscribe();
+  }
+
+  /**
+   * Poll the open trades for marks and keep option subscriptions in sync.
+   * Runs independently of automation so unrealized P&L stays current while
+   * automation is paused (during a regular session only).
+   */
+  startLiveMarks(): void {
+    if (this.liveTimer) return;
+    this.liveTimer = setInterval(() => {
+      void this.liveMarkTick();
+    }, LIVE_MARK_INTERVAL_MS);
+    this.liveTimer.unref?.();
+    void this.liveMarkTick();
+  }
+
+  stopLiveMarks(): void {
+    if (this.liveTimer) clearInterval(this.liveTimer);
+    this.liveTimer = null;
+    if (this.subscribedOptionSymbols.size > 0) {
+      this.optionQuotes?.unsubscribe(this.onOptionQuote);
+      this.subscribedOptionSymbols.clear();
+    }
+  }
+
+  /** Stream mark/equity updates to an SSE client. */
+  subscribeMarks(listener: (event: ExecutionMarkEvent) => void): () => void {
+    this.markListeners.add(listener);
+    return () => {
+      this.markListeners.delete(listener);
+    };
+  }
+
+  /** Current marks and live status without touching the network. */
+  markSnapshot(): {
+    marks: Record<string, ExecutionMark | null>;
+    equity: EquitySnapshot | null;
+    live: ExecutionLiveStatus;
+  } {
+    const open = this.store.listOpenTrades().filter((trade) => trade.status === "open");
+    const marks: Record<string, ExecutionMark | null> = {};
+    for (const trade of open) {
+      marks[trade.id] = this.liveMarks.get(trade.id) ?? this.store.listMarks(trade.id, 1)[0] ?? null;
+    }
+    return {
+      marks,
+      equity: this.liveEquity ?? this.store.latestEquity(),
+      live: this.liveStatus(open),
+    };
   }
 
   /** Manual paper entry; automation uses the same locked pipeline. */
@@ -108,6 +201,7 @@ export class ExecutionEngine {
       return await this.enterLocked(opportunityId);
     } finally {
       this.store.releaseLease(owner);
+      this.syncOptionSubscriptions();
     }
   }
 
@@ -196,9 +290,12 @@ export class ExecutionEngine {
       return err({ kind: "busy", message: "Another execution operation is in progress" });
     }
     try {
-      return await this.closeLocked(tradeId, reason);
+      const result = await this.closeLocked(tradeId, reason);
+      if (result.ok) await this.publishEquity(this.now(), true);
+      return result;
     } finally {
       this.store.releaseLease(owner);
+      this.syncOptionSubscriptions();
     }
   }
 
@@ -286,9 +383,13 @@ export class ExecutionEngine {
       counts: this.store.counts(),
       openTrades,
       latestMarks: Object.fromEntries(
-        openTrades.map((trade) => [trade.id, this.store.listMarks(trade.id, 1)[0] ?? null])
+        openTrades.map((trade) => [
+          trade.id,
+          this.liveMarks.get(trade.id) ?? this.store.listMarks(trade.id, 1)[0] ?? null,
+        ])
       ),
-      equity: this.store.latestEquity(),
+      equity: this.liveEquity ?? this.store.latestEquity(),
+      live: this.liveStatus(openTrades),
       broker: snapshot.ok
         ? { ok: true, cashUsd: snapshot.value.cashUsd, positions: snapshot.value.positions }
         : { ok: false, error: snapshot.error },
@@ -315,6 +416,7 @@ export class ExecutionEngine {
       return { status: "completed", exits, entries, marks };
     } finally {
       this.store.releaseLease(owner);
+      this.syncOptionSubscriptions();
     }
   }
 
@@ -428,42 +530,172 @@ export class ExecutionEngine {
 
   private async markOpenTrades(now: Date): Promise<number> {
     const open = this.store.listOpenTrades().filter((trade) => trade.status === "open");
-    let positionsUsd = 0;
     let marked = 0;
 
     for (const trade of open) {
-      const close = await this.closeQuote(trade);
-      if (!close) continue;
-      const multiplier =
-        trade.entrySummary?.legs[0]?.multiplier ?? trade.setup.legs[0]?.multiplier ?? 100;
-      const liquidationValueUsd = roundMoney(-close.net * multiplier);
-      this.store.recordMark({
-        tradeId: trade.id,
-        markedAt: now.toISOString(),
-        liquidationValueUsd,
-        underlyingPrice: close.underlyingPrice,
-      });
-      positionsUsd += liquidationValueUsd;
+      const touch = await this.touchForMark(trade, now);
+      if (!touch) continue;
+      this.publishMark(this.markFromTouch(trade, touch, now), now, touch.source, true);
       marked += 1;
     }
 
-    const snapshot = await this.broker.snapshot();
-    if (snapshot.ok) {
-      this.store.recordEquity({
-        asOf: now.toISOString(),
-        cashUsd: snapshot.value.cashUsd,
-        positionsUsd: roundMoney(positionsUsd),
-        equityUsd: roundMoney(snapshot.value.cashUsd + positionsUsd),
-      });
-    }
+    await this.publishEquity(now, true);
     return marked;
   }
 
-  private async closeQuote(
+  /**
+   * The live loop runs even when automation is paused. It prefers fresh
+   * streamed option quotes and falls back to polling each open trade's chain
+   * every `LIVE_POLL_INTERVAL_MS` (at most two chains per pass).
+   */
+  private async liveMarkTick(): Promise<void> {
+    if (this.liveBusy) return;
+    this.liveBusy = true;
+    try {
+      const now = this.now();
+      const open = this.store.listOpenTrades().filter((trade) => trade.status === "open");
+
+      if (open.length === 0 || sessionState(now).state !== "open") {
+        this.syncOptionSubscriptions([]);
+        this.liveQuotes.clear();
+        return;
+      }
+
+      this.syncOptionSubscriptions(open);
+      const missing: ExecutionTrade[] = [];
+
+      for (const trade of open) {
+        const touch = this.touchFromLive(trade, now);
+        if (!touch) {
+          missing.push(trade);
+          continue;
+        }
+        this.publishMark(this.markFromTouch(trade, touch, now), now, "stream", false);
+      }
+
+      if (missing.length > 0 && now.getTime() - this.lastPollAt >= LIVE_POLL_INTERVAL_MS) {
+        this.lastPollAt = now.getTime();
+        // Rotate the batch so more than two open trades still get polled.
+        const start = this.pollCursor % missing.length;
+        const batch = [...missing.slice(start), ...missing.slice(0, start)].slice(0, 2);
+        this.pollCursor += 1;
+        await mapWithConcurrency(batch, 2, async (trade) => {
+          const touch = await this.touchFromChain(trade);
+          if (!touch) return;
+          this.publishMark(this.markFromTouch(trade, touch, now), now, "poll", false);
+        });
+      }
+
+      await this.publishEquity(now);
+    } catch (error) {
+      this.logger(
+        `Live mark tick failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    } finally {
+      this.liveBusy = false;
+    }
+  }
+
+  private handleOptionQuote(quote: OptionQuote): void {
+    if (!quote.symbol) return;
+    const now = this.now();
+    this.liveQuotes.set(quote.symbol, { quote, seenAt: now.getTime() });
+
+    for (const trade of this.store.listOpenTrades()) {
+      if (trade.status !== "open") continue;
+      const touch = this.touchFromLive(trade, now);
+      if (touch) this.publishMark(this.markFromTouch(trade, touch, now), now, "stream", false);
+    }
+    void this.publishEquity(now);
+  }
+
+  private syncOptionSubscriptions(open = this.store.listOpenTrades()): void {
+    const openIds = new Set(
+      open.filter((trade) => trade.status === "open").map((trade) => trade.id)
+    );
+    for (const id of this.liveMarks.keys()) {
+      if (openIds.has(id)) continue;
+      this.liveMarks.delete(id);
+      this.lastBroadcastAt.delete(id);
+      this.lastPersistAt.delete(id);
+    }
+    if (!this.optionQuotes) return;
+
+    const symbols = new Set<string>();
+    for (const trade of open) {
+      if (trade.status !== "open") continue;
+      for (const leg of trade.setup.legs) symbols.add(leg.contractSymbol);
+    }
+
+    let unchanged = symbols.size === this.subscribedOptionSymbols.size;
+    if (unchanged) {
+      for (const symbol of symbols) {
+        if (!this.subscribedOptionSymbols.has(symbol)) {
+          unchanged = false;
+          break;
+        }
+      }
+    }
+    if (unchanged) return;
+
+    this.subscribedOptionSymbols.clear();
+    for (const symbol of symbols) this.subscribedOptionSymbols.add(symbol);
+
+    if (symbols.size === 0) {
+      this.optionQuotes.unsubscribe(this.onOptionQuote);
+      this.liveQuotes.clear();
+      return;
+    }
+    this.optionQuotes.subscribe([...symbols], this.onOptionQuote);
+  }
+
+  private touchFromLive(
+    trade: ExecutionTrade,
+    now: Date
+  ): { net: number; underlyingPrice: number | null } | null {
+    const quotes = new Map<
+      string,
+      {
+        contractSymbol: string;
+        bid: number | null;
+        ask: number | null;
+        quoteTime: string | null;
+        multiplier: number;
+      }
+    >();
+    let underlyingPrice: number | null = null;
+
+    for (const leg of trade.setup.legs) {
+      const cached = this.liveQuotes.get(leg.contractSymbol);
+      if (!cached) return null;
+      if (now.getTime() - cached.seenAt > LIVE_QUOTE_MAX_AGE_MS) return null;
+      if (cached.quote.bid === null || cached.quote.ask === null) return null;
+      if (underlyingPrice === null && cached.quote.underlyingPrice !== null) {
+        underlyingPrice = cached.quote.underlyingPrice;
+      }
+      quotes.set(leg.contractSymbol, {
+        contractSymbol: leg.contractSymbol,
+        bid: cached.quote.bid,
+        ask: cached.quote.ask,
+        quoteTime:
+          cached.quote.quoteTime === null
+            ? null
+            : new Date(cached.quote.quoteTime * 1000).toISOString(),
+        multiplier: cached.quote.multiplier ?? leg.multiplier,
+      });
+    }
+
+    const net = packageTouchPrice(reverseLegs(trade.setup.legs), quotes);
+    return net.ok ? { net: net.value, underlyingPrice } : null;
+  }
+
+  private async touchFromChain(
     trade: ExecutionTrade
   ): Promise<{ net: number; underlyingPrice: number | null } | null> {
     try {
-      const chain = await this.market.chain(trade.setup.symbol, trade.setup.expiry);
+      const chain = await this.market.chain(trade.setup.symbol, trade.setup.expiry, {
+        fresh: true,
+      });
       const quotes = quotesFromChain(chain);
       const net = packageTouchPrice(reverseLegs(trade.setup.legs), quotes);
       if (!net.ok) return null;
@@ -471,6 +703,128 @@ export class ExecutionEngine {
     } catch {
       return null;
     }
+  }
+
+  private async touchForMark(
+    trade: ExecutionTrade,
+    now: Date
+  ): Promise<{
+    net: number;
+    underlyingPrice: number | null;
+    source: "stream" | "poll";
+  } | null> {
+    const live = this.touchFromLive(trade, now);
+    if (live) return { ...live, source: "stream" };
+    const chain = await this.touchFromChain(trade);
+    return chain ? { ...chain, source: "poll" } : null;
+  }
+
+  private markFromTouch(
+    trade: ExecutionTrade,
+    touch: { net: number; underlyingPrice: number | null },
+    now: Date
+  ): ExecutionMark {
+    const multiplier =
+      trade.entrySummary?.legs[0]?.multiplier ?? trade.setup.legs[0]?.multiplier ?? 100;
+    return {
+      tradeId: trade.id,
+      markedAt: now.toISOString(),
+      liquidationValueUsd: roundMoney(-touch.net * multiplier),
+      underlyingPrice: touch.underlyingPrice,
+    };
+  }
+
+  private publishMark(
+    mark: ExecutionMark,
+    now: Date,
+    source: "stream" | "poll",
+    force: boolean
+  ): void {
+    this.lastMarkSource = source;
+    this.liveMarks.set(mark.tradeId, mark);
+
+    const broadcastAt = this.lastBroadcastAt.get(mark.tradeId) ?? 0;
+    if (force || now.getTime() - broadcastAt >= MARK_BROADCAST_MS) {
+      this.lastBroadcastAt.set(mark.tradeId, now.getTime());
+      for (const listener of this.markListeners) {
+        try {
+          listener({ type: "mark", mark });
+        } catch {
+          // A broken SSE client must never affect execution.
+        }
+      }
+    }
+
+    // The live stream can tick many times per second; persist at a bounded
+    // cadence so the marks table stays useful without exploding in size.
+    const persistAt = this.lastPersistAt.get(mark.tradeId) ?? 0;
+    if (force || now.getTime() - persistAt >= MARK_PERSIST_MS) {
+      this.store.recordMark(mark);
+      this.lastPersistAt.set(mark.tradeId, now.getTime());
+    }
+  }
+
+  private async publishEquity(now = this.now(), force = false): Promise<void> {
+    if (this.equityBusy) return;
+    if (!force && now.getTime() - this.lastEquityAt < EQUITY_BROADCAST_MS) return;
+
+    this.equityBusy = true;
+    try {
+      const snapshot = await this.broker.snapshot();
+      if (!snapshot.ok) return;
+
+      let positionsUsd = 0;
+      for (const trade of this.store.listOpenTrades()) {
+        if (trade.status !== "open") continue;
+        const mark = this.liveMarks.get(trade.id) ?? this.store.listMarks(trade.id, 1)[0] ?? null;
+        if (mark) positionsUsd += mark.liquidationValueUsd;
+      }
+
+      const equity: EquitySnapshot = {
+        asOf: now.toISOString(),
+        cashUsd: snapshot.value.cashUsd,
+        positionsUsd: roundMoney(positionsUsd),
+        equityUsd: roundMoney(snapshot.value.cashUsd + positionsUsd),
+      };
+      this.liveEquity = equity;
+      this.lastEquityAt = now.getTime();
+
+      for (const listener of this.markListeners) {
+        try {
+          listener({ type: "equity", equity });
+        } catch {
+          // Ignore subscriber failures.
+        }
+      }
+
+      if (force || now.getTime() - this.lastEquityPersistAt >= EQUITY_PERSIST_MS) {
+        this.store.recordEquity(equity);
+        this.lastEquityPersistAt = now.getTime();
+      }
+    } finally {
+      this.equityBusy = false;
+    }
+  }
+
+  private liveStatus(open = this.store.listOpenTrades()): ExecutionLiveStatus {
+    let lastMarkAt: string | null = null;
+    for (const trade of open) {
+      const mark = this.liveMarks.get(trade.id);
+      if (mark && (lastMarkAt === null || mark.markedAt > lastMarkAt)) {
+        lastMarkAt = mark.markedAt;
+      }
+    }
+    return {
+      streaming: Boolean(this.optionQuotes?.streaming?.()),
+      source: this.lastMarkSource,
+      lastMarkAt,
+    };
+  }
+
+  private async closeQuote(
+    trade: ExecutionTrade
+  ): Promise<{ net: number; underlyingPrice: number | null } | null> {
+    return this.touchFromLive(trade, this.now()) ?? this.touchFromChain(trade);
   }
 
   private async priceRequest(

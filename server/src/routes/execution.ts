@@ -8,13 +8,26 @@ import { ExecutionScheduler } from "../execution/scheduler.js";
 import { normalizeExecutionConfig } from "../execution/config.js";
 import { quotesFromChain } from "../execution/pricing.js";
 import { createExecutionStore } from "../execution/store.js";
+import type { OptionQuoteSource } from "../execution/types.js";
 import type { ExecutionError, ExecutionTradeStatus } from "../execution/types.js";
 import type { BrokerOrderRequest } from "../execution/ports/broker.js";
+import { schwabStreamer } from "../providers/schwabStreamer.js";
 import { createHttpScannerMarketData } from "../scanner/market.js";
 import { scannerStoreSingleton } from "./scanner.js";
 
 export const executionStore = createExecutionStore(db);
 const market = createHttpScannerMarketData();
+
+/**
+ * Bridge the Schwab streamer to the engine's option-quote shape. The streamer
+ * stays the single owner of the upstream WebSocket; the engine only sees a
+ * replaceable quote source (a polling or recorded source works just as well).
+ */
+const optionQuotes: OptionQuoteSource = {
+  subscribe: (symbols, listener) => schwabStreamer.subscribeOptions(listener, symbols),
+  unsubscribe: (listener) => schwabStreamer.unsubscribeOptions(listener),
+  streaming: () => schwabStreamer.status().connected,
+};
 
 type QuoteCacheEntry = { expiresAt: number; quotes: Map<string, FillModelQuote> };
 const quoteCache = new Map<string, QuoteCacheEntry>();
@@ -87,6 +100,7 @@ export const executionEngine = new ExecutionEngine({
   store: executionStore,
   broker,
   market,
+  optionQuotes,
   setups: {
     find: (opportunityId) => scannerStoreSingleton.findById(opportunityId),
     listEntryReady: () =>
