@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -52,7 +53,9 @@ export default function ScannerOverlay({
     }
   };
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       className="scanner-overlay"
       onMouseDown={(event) => {
@@ -76,6 +79,7 @@ export default function ScannerOverlay({
         </header>
         <div className="scanner-overlay-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

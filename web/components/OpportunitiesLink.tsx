@@ -25,7 +25,8 @@ export default function OpportunitiesLink() {
       className="relative flex items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--text-dim)] hover:text-[var(--amber)] cursor-pointer"
       title={present ? "Opportunities widget is on the dashboard" : "Add the opportunities widget"}
     >
-      OPPORTUNITIES
+      <span className="hidden sm:inline">OPPORTUNITIES</span>
+      <span className="sm:hidden">OPPS</span>
       {data.length > 0 && (
         <span
           aria-label={`${data.length} unread scanner notifications`}

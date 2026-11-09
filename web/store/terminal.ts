@@ -68,7 +68,7 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "w-news", x: 0, y: 12, w: 7, h: 7 },
   { i: "w-macro", x: 7, y: 12, w: 5, h: 7 },
   { i: "w-opportunities", x: 0, y: 19, w: 7, h: 9 },
-  { i: "w-paper", x: 0, y: 28, w: 7, h: 10 },
+  { i: "w-paper", x: 0, y: 28, w: 12, h: 10 },
 ];
 
 const SIZE_BY_TYPE: Record<WidgetType, { w: number; h: number }> = {
@@ -79,7 +79,7 @@ const SIZE_BY_TYPE: Record<WidgetType, { w: number; h: number }> = {
   heatmap: { w: 7, h: 10 },
   screener: { w: 12, h: 9 },
   opportunities: { w: 7, h: 9 },
-  paper: { w: 7, h: 10 },
+  paper: { w: 12, h: 10 },
   crypto: { w: 6, h: 9 },
   macro: { w: 5, h: 7 },
   options: { w: 12, h: 9 },

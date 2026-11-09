@@ -313,7 +313,11 @@ export default function OpportunitiesWidget() {
                     {paper && (
                       <span
                         className={`scanner-badge ${
-                          paper.status === "open" ? "scanner-badge--up" : "scanner-badge--amber"
+                          paper.status === "open"
+                            ? "scanner-badge--up"
+                            : paper.status === "closed"
+                              ? "scanner-badge--muted"
+                              : "scanner-badge--amber"
                         }`}
                         title={`Paper trade ${paper.status.replaceAll("_", " ")}`}
                       >

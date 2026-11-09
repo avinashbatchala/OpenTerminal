@@ -284,6 +284,15 @@ function TradeDetail({
         </span>
       </div>
 
+      {latestMark && (
+        <div className="paper-mark-note dim">
+          Marked {formatDateTime(latestMark.markedAt)}
+          {latestMark.underlyingPrice !== null
+            ? ` · underlying ${formatUsd(latestMark.underlyingPrice)}`
+            : ""}
+        </div>
+      )}
+
       <div className="paper-detail-metrics">
         <Metric label="Entry" value={premiumLabel(trade)} />
         <Metric
@@ -478,7 +487,7 @@ export default function PaperWidget() {
               onClick={() => toggle.mutate(!config?.enabled)}
               disabled={!config || toggle.isPending}
             >
-              {config?.enabled ? "PAUSE" : "START"}
+              {toggle.isPending ? "WORKING…" : config?.enabled ? "PAUSE" : "START"}
             </button>
             <button
               type="button"
@@ -520,7 +529,7 @@ export default function PaperWidget() {
             </button>
           </div>
           <span className="dim text-[10px]">
-            {statusQuery.isFetching || tradesQuery.isFetching ? "updating…" : "30s automation"}
+            {statusQuery.isFetching || tradesQuery.isFetching ? "updating…" : "next tick ≤30s"}
           </span>
         </div>
       </header>
