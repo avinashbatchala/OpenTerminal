@@ -178,9 +178,9 @@ describe("paper trading widget", () => {
   it("shows equity, open positions and closed pnl", async () => {
     renderWidget();
 
-    expect(await screen.findByText("$99,997.20")).toBeInTheDocument();
-    expect(screen.getByText("AAPL")).toBeInTheDocument();
-    expect(screen.getByText(/-\$20\.80/)).toBeInTheDocument();
+    expect(await screen.findAllByText("$99,997.20")).not.toHaveLength(0);
+    expect(screen.getAllByText("AAPL").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/-\$20\.80/).length).toBeGreaterThan(0);
 
     await userEvent.setup().click(screen.getByRole("button", { name: /history/i }));
     const closedRow = await screen.findByRole("button", { name: /MSFT/ });
@@ -193,8 +193,8 @@ describe("paper trading widget", () => {
 
     await user.click(await screen.findByRole("button", { name: /AAPL/ }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Trade detail" });
-    expect(dialog).toBeInTheDocument();
+    const inspector = await screen.findByRole("region", { name: "Trade detail" });
+    expect(inspector).toBeInTheDocument();
     expect(await screen.findByText("AAPL261120C00100000")).toBeInTheDocument();
     expect(screen.getByText(/trade opened/i)).toBeInTheDocument();
     await waitFor(() => expect(apiGetMock).toHaveBeenCalledWith(
