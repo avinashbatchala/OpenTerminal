@@ -47,6 +47,7 @@ export type ModeledFill = {
 export type FillModelError =
   | { kind: "invalid_config"; message: string }
   | { kind: "unsupported_asset"; assetClass: string }
+  | { kind: "market_unavailable"; message: string }
   | { kind: "missing_quote"; contractSymbol: string }
   | { kind: "stale_quote"; contractSymbol: string; ageSeconds: number }
   | { kind: "invalid_quote"; contractSymbol: string; message: string }

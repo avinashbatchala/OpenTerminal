@@ -61,10 +61,17 @@ export type BrokerOrderLeg = {
   quantity: number;
 };
 
+export type BrokerInstrument = {
+  underlying: string;
+  /** ISO expiry for options; null for equity orders. */
+  expiry: string | null;
+};
+
 export type BrokerOrderRequest = {
   clientOrderId: ClientOrderId;
   intent: "open" | "close";
   assetClass: "option" | "equity";
+  instrument: BrokerInstrument;
   legs: readonly BrokerOrderLeg[];
   orderType: "market" | "limit";
   /** Net package price per share, or null for market orders. */
@@ -78,27 +85,46 @@ export type BrokerFill = {
   side: "buy" | "sell";
   quantity: number;
   price: number;
+  /** Adapter-observed mid at submission, used for execution-quality scoring. */
+  referenceMid: number;
   multiplier: number;
   feesUsd: number;
   at: string;
 };
 
 export type BrokerOrderUpdate =
-  | { kind: "acknowledged"; brokerOrderId: BrokerOrderId; at: string }
+  | {
+      kind: "acknowledged";
+      clientOrderId: ClientOrderId;
+      brokerOrderId: BrokerOrderId;
+      at: string;
+    }
   | {
       kind: "fill";
+      clientOrderId: ClientOrderId;
       brokerOrderId: BrokerOrderId;
       fills: readonly BrokerFill[];
       at: string;
     }
   | {
       kind: "rejected";
+      clientOrderId: ClientOrderId;
       brokerOrderId: BrokerOrderId | null;
       error: BrokerError;
       at: string;
     }
-  | { kind: "cancelled"; brokerOrderId: BrokerOrderId; at: string }
-  | { kind: "expired"; brokerOrderId: BrokerOrderId; at: string };
+  | {
+      kind: "cancelled";
+      clientOrderId: ClientOrderId;
+      brokerOrderId: BrokerOrderId;
+      at: string;
+    }
+  | {
+      kind: "expired";
+      clientOrderId: ClientOrderId;
+      brokerOrderId: BrokerOrderId;
+      at: string;
+    };
 
 export type BrokerPosition = {
   contractSymbol: string;

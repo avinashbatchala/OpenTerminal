@@ -35,6 +35,7 @@ function request(clientOrderId: string, overrides: Partial<BrokerOrderRequest> =
     clientOrderId: asClientOrderId(clientOrderId),
     intent: "open",
     assetClass: "option",
+    instrument: { underlying: "AAPL", expiry: "2026-11-20" },
     legs: [{ contractSymbol: CONTRACT, side: "buy", quantity: 1 }],
     orderType: "limit",
     netLimitPrice: 2,

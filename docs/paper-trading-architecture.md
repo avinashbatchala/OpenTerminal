@@ -1,7 +1,8 @@
 # Paper trading execution architecture
 
-Status: **P0 implemented** (broker port, order lifecycle, paper fill model,
-contract tests). Storage, engine, automation, API and UI follow in later phases.
+Status: **P0 + P1 implemented** (broker port, order lifecycle, paper fill model,
+contract tests, SQLite store, execution engine, manual enter/close API).
+Automation, marks/equity and UI follow in later phases.
 
 ## Invariant
 
@@ -58,6 +59,34 @@ as a percentage of mid. A live broker and the paper model produce the same
 - `adapters/paper/broker.ts` — in-memory `BrokerPort`: idempotent submit,
   acknowledge-then-fill events, normalized rejects, cancel, snapshot with cash
   and positions.
+
+## Store and engine (P1)
+
+- Tables (migration `execution_schema_migrations` v1): `execution_config`,
+  `execution_trades`, `execution_orders`, `execution_fills`,
+  `execution_events`, `execution_lease`.
+- `ExecutionStore` persists the full broker order state, idempotent fills, a
+  unique dedupe key per event, and a single-row lease.
+- `ExecutionEngine` depends only on `BrokerPort` + `SetupSource` + market data.
+  It opens a manual entry only when the scanner lifecycle is `entry_ready`,
+  enforces one trade per opportunity plus open/per-symbol limits, prices a
+  marketable limit from the live chain, and drives the trade from broker events.
+- Closing reverses the legs and records realized P&L from the two fill
+  summaries. Rejections leave the trade open (exit) or mark it rejected
+  (entry), with an append-only event.
+
+## API (P1)
+
+All routes are authenticated (`x-api-key`) under `/api/execution`:
+
+- `GET /status` — config, trade counts, open trades, broker cash/positions.
+- `GET /trades?status=&limit=` — recent trades.
+- `GET /trades/:id` — trade, orders, fills and events.
+- `POST /enter` `{ opportunityId }` — manual simulated entry (`201` open,
+  `202` pending).
+- `POST /trades/:id/close` — manual simulated exit.
+
+No automation runs yet; the scheduler, exit policies and UI are P2+.
 
 ## Adding a live broker
 

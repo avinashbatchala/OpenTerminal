@@ -30,7 +30,7 @@ import type { FillModelError, ModeledFill } from "./fillModel.js";
 export type PaperFillProvider = (
   request: BrokerOrderRequest,
   at: Date
-) => Result<ModeledFill, FillModelError>;
+) => Result<ModeledFill, FillModelError> | Promise<Result<ModeledFill, FillModelError>>;
 
 export type PaperBrokerOptions = {
   fill: PaperFillProvider;
@@ -52,6 +52,8 @@ function normalizeFillError(error: FillModelError): BrokerError {
   switch (error.kind) {
     case "unsupported_asset":
       return { kind: "unsupported_order", message: `unsupported asset class: ${error.assetClass}` };
+    case "market_unavailable":
+      return { kind: "network", message: error.message, retryable: true };
     case "invalid_config":
       return { kind: "unknown", message: error.message };
     case "missing_quote":
@@ -140,7 +142,13 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
 
   const reject = (clientId: string, brokerOrderId: BrokerOrderId | null, error: BrokerError) => {
     const at = now().toISOString();
-    const update: BrokerOrderUpdate = { kind: "rejected", brokerOrderId, error, at };
+    const update: BrokerOrderUpdate = {
+      kind: "rejected",
+      clientOrderId: asClientOrderId(clientId),
+      brokerOrderId,
+      error,
+      at,
+    };
     apply(clientId, update);
     emit(update);
   };
@@ -166,13 +174,14 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
 
       const acknowledged: BrokerOrderUpdate = {
         kind: "acknowledged",
+        clientOrderId: asClientOrderId(clientId),
         brokerOrderId,
         at: at.toISOString(),
       };
       apply(clientId, acknowledged);
       emit(acknowledged);
 
-      const modeled = options.fill(request, at);
+      const modeled = await options.fill(request, at);
       if (!modeled.ok) {
         reject(clientId, brokerOrderId, normalizeFillError(modeled.error));
         return ok({ brokerOrderId });
@@ -193,6 +202,7 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
         side: leg.side,
         quantity: leg.quantity,
         price: leg.fillPrice,
+        referenceMid: leg.referenceMid,
         multiplier: leg.multiplier,
         feesUsd: leg.feesUsd,
         at: leg.at,
@@ -200,6 +210,7 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
 
       const fillUpdate: BrokerOrderUpdate = {
         kind: "fill",
+        clientOrderId: asClientOrderId(clientId),
         brokerOrderId,
         fills,
         at: at.toISOString(),
@@ -228,6 +239,7 @@ export function createPaperBroker(options: PaperBrokerOptions): BrokerPort {
       }
       const update: BrokerOrderUpdate = {
         kind: "cancelled",
+        clientOrderId: asClientOrderId(clientId),
         brokerOrderId,
         at: now().toISOString(),
       };

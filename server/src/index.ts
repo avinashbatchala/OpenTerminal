@@ -7,6 +7,7 @@ import { schwabRouter } from "./routes/schwab.js";
 import { streamRouter } from "./routes/stream.js";
 import { settingsRouter } from "./routes/settings.js";
 import { scannerRouter, scannerScheduler } from "./routes/scanner.js";
+import { executionRouter } from "./routes/execution.js";
 import { allStats } from "./providers/registry.js";
 import { schwabStreamer } from "./providers/schwabStreamer.js";
 import { isSchwabConfigured } from "./providers/schwabAuth.js";
@@ -41,6 +42,12 @@ app.use(express.json());
 // caller could otherwise repeat the multi-provider fan-out in market.ts (up to
 // hundreds of outbound calls per request — see getQuotes) fast enough to get
 // this deployment's IP rate-limited or banned by Nasdaq/Yahoo/Stooq/SEC.
+app.use(
+  "/api/execution",
+  requireApiKey,
+  rateLimit({ windowMs: 60_000, max: 120 }),
+  executionRouter
+);
 app.use("/api", rateLimit({ windowMs: 60_000, max: 240 }), marketRouter);
 // Schwab-specific endpoints and streaming spend the user's own API quota, so
 // they sit behind the shared secret even though the core market feed does not.

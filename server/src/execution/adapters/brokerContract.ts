@@ -13,6 +13,7 @@ function request(clientOrderId: string): BrokerOrderRequest {
     clientOrderId: asClientOrderId(clientOrderId),
     intent: "open",
     assetClass: "option",
+    instrument: { underlying: "AAPL", expiry: "2026-11-20" },
     legs: [
       {
         contractSymbol: "AAPL261120C00100000",

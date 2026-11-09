@@ -14,6 +14,7 @@ const REQUEST: BrokerOrderRequest = {
   clientOrderId: asClientOrderId("client-1"),
   intent: "open",
   assetClass: "option",
+  instrument: { underlying: "AAPL", expiry: "2026-11-20" },
   legs: [{ contractSymbol: "AAPL261120C00100000", side: "buy", quantity: 2 }],
   orderType: "limit",
   netLimitPrice: 2,
@@ -27,6 +28,7 @@ function fill(quantity: number, id: string): BrokerFill {
     side: "buy",
     quantity,
     price: 1.2,
+    referenceMid: 1.1,
     multiplier: 100,
     feesUsd: 0.8,
     at: AT,
@@ -34,7 +36,12 @@ function fill(quantity: number, id: string): BrokerFill {
 }
 
 function ack(): BrokerOrderUpdate {
-  return { kind: "acknowledged", brokerOrderId: BROKER_ID, at: AT };
+  return {
+    kind: "acknowledged",
+    clientOrderId: REQUEST.clientOrderId,
+    brokerOrderId: BROKER_ID,
+    at: AT,
+  };
 }
 
 function requireState(state: OrderState, status: OrderState["status"]) {
@@ -50,6 +57,7 @@ describe("order lifecycle", () => {
 
     const filled = applyBrokerUpdate(acknowledged.value, {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(2, "fill-1")],
       at: AT,
@@ -65,6 +73,7 @@ describe("order lifecycle", () => {
 
     const partial = applyBrokerUpdate(acknowledged.value, {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(1, "fill-1")],
       at: AT,
@@ -75,6 +84,7 @@ describe("order lifecycle", () => {
 
     const filled = applyBrokerUpdate(partial.value, {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(1, "fill-2")],
       at: AT,
@@ -86,6 +96,7 @@ describe("order lifecycle", () => {
   it("rejects overfills and fills before acknowledgement", () => {
     const overfill = applyBrokerUpdate(submittedOrder(REQUEST, AT), {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(1, "fill-1")],
       at: AT,
@@ -97,6 +108,7 @@ describe("order lifecycle", () => {
     if (!acked.ok) throw new Error("ack failed");
     const tooMuch = applyBrokerUpdate(acked.value, {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(3, "fill-1")],
       at: AT,
@@ -110,6 +122,7 @@ describe("order lifecycle", () => {
     if (!acknowledged.ok) throw new Error("ack failed");
     const partial = applyBrokerUpdate(acknowledged.value, {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(1, "fill-1")],
       at: AT,
@@ -118,6 +131,7 @@ describe("order lifecycle", () => {
 
     const cancelled = applyBrokerUpdate(partial.value, {
       kind: "cancelled",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       at: AT,
     });
@@ -138,6 +152,7 @@ describe("order lifecycle", () => {
     if (!acknowledged.ok) throw new Error("ack failed");
     const filled = applyBrokerUpdate(acknowledged.value, {
       kind: "fill",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       fills: [fill(2, "fill-1")],
       at: AT,
@@ -146,6 +161,7 @@ describe("order lifecycle", () => {
 
     const cancelled = applyBrokerUpdate(filled.value, {
       kind: "cancelled",
+      clientOrderId: REQUEST.clientOrderId,
       brokerOrderId: BROKER_ID,
       at: AT,
     });

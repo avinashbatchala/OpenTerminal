@@ -42,6 +42,7 @@ function request(
     clientOrderId: asClientOrderId("fill-test"),
     intent: "open",
     assetClass: "option",
+    instrument: { underlying: "AAPL", expiry: "2026-11-20" },
     legs,
     orderType: "limit",
     netLimitPrice: null,
