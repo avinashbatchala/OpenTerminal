@@ -41,6 +41,7 @@ function TerminalContent() {
           "7": () => addWidget("options"),
           "8": () => addWidget("portfolio"),
           "9": () => addWidget("opportunities"),
+          "0": () => addWidget("paper"),
         };
         const fn = map[e.key];
         if (fn) {

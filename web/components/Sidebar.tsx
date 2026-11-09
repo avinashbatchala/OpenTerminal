@@ -8,6 +8,7 @@ const ITEMS: Array<{ type: WidgetType; label: string; key: string }> = [
   { type: "news", label: "NEWS", key: "⌥3" },
   { type: "screener", label: "SCREENER", key: "⌥4" },
   { type: "opportunities", label: "OPPORTUNITIES", key: "⌥9" },
+  { type: "paper", label: "PAPER TRADING", key: "⌥0" },
   { type: "heatmap", label: "HEATMAP", key: "⌥5" },
   { type: "crypto", label: "CRYPTO", key: "⌥6" },
   { type: "options", label: "OPTIONS", key: "⌥7" },

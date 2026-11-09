@@ -1,8 +1,8 @@
 # Paper trading execution architecture
 
-Status: **P0 + P1 + P2 implemented** (broker port, order lifecycle, paper fill
-model, contract tests, SQLite store, execution engine, manual enter/close API,
-automation scheduler, exit rules, marks and equity). UI follows in P3.
+Status: **P0 + P1 + P2 + P3 implemented** (broker port, order lifecycle, paper
+fill model, contract tests, SQLite store, execution engine, manual enter/close
+API, automation scheduler, exit rules, marks/equity, and the dashboard UI).
 
 ## Invariant
 
@@ -115,7 +115,19 @@ All routes are authenticated (`x-api-key`) under `/api/execution`:
   settings; automation stays inert until `enabled` is true.
 - `GET /equity?limit=` — latest and historical equity snapshots.
 
-The UI is P3.
+## UI (P3)
+
+- **Paper Trading widget** (dashboard, `⌥0`): equity/day P&L/realized/open
+  metrics, Positions and Closed tabs, per-trade unrealized or realized P&L,
+  START/PAUSE, settings, and a trade detail overlay with fills (price vs mid,
+  slippage, fees), marks and lifecycle events.
+- **Settings**: automation on/off, entries/exits, profit target, stop multiple,
+  time stop, spread factor, max slippage, and open/per-symbol limits via
+  `PUT /api/execution/config`.
+- **Opportunities widget**: setups with a paper trade show a `PAPER` badge;
+  the detail header offers `PAPER` (entry) or `CLOSE PAPER` (exit) and surfaces
+  API errors inline.
+- Equity and marks refresh every 30–60s; all numbers are simulated.
 
 ## Adding a live broker
 

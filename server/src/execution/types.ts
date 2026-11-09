@@ -107,6 +107,7 @@ export type ExecutionStatus = {
   config: ExecutionConfig;
   counts: Record<ExecutionTradeStatus, number>;
   openTrades: ExecutionTrade[];
+  latestMarks: Record<string, ExecutionMark | null>;
   equity: EquitySnapshot | null;
   broker:
     | { ok: true; cashUsd: number; positions: readonly BrokerPosition[] }

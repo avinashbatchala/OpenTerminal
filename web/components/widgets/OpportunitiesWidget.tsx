@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { deadlineStatus, planLine, tradeAction } from "../../lib/opportunityInsight";
+import type { ExecutionTrade } from "../../lib/paper";
 import {
   STRATEGY_LABELS,
   emptyState,
@@ -61,6 +62,13 @@ export default function OpportunitiesWidget() {
     retry: 0,
   });
 
+  const paperTradesQuery = useQuery({
+    queryKey: ["execution", "trades"],
+    queryFn: () => apiGet<ExecutionTrade[]>("/api/execution/trades?limit=200", { timeoutMs: 8_000 }),
+    refetchInterval: 30_000,
+    retry: 0,
+  });
+
   const notificationsQuery = useQuery({
     queryKey: ["scanner", "notifications", "unread"],
     queryFn: () =>
@@ -79,6 +87,34 @@ export default function OpportunitiesWidget() {
       apiPost(`/api/scanner/opportunities/${encodeURIComponent(id)}/dismiss`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["scanner"] }),
   });
+
+  const [paperError, setPaperError] = useState<string | null>(null);
+  const paperEnter = useMutation({
+    mutationFn: (opportunityId: string) =>
+      apiPost("/api/execution/enter", { opportunityId }),
+    onSuccess: () => {
+      setPaperError(null);
+      return queryClient.invalidateQueries({ queryKey: ["execution"] });
+    },
+    onError: (error: Error) => setPaperError(error.message),
+  });
+  const paperClose = useMutation({
+    mutationFn: (tradeId: string) =>
+      apiPost(`/api/execution/trades/${encodeURIComponent(tradeId)}/close`, {}),
+    onSuccess: () => {
+      setPaperError(null);
+      return queryClient.invalidateQueries({ queryKey: ["execution"] });
+    },
+    onError: (error: Error) => setPaperError(error.message),
+  });
+
+  const paperByOpportunity = new Map<string, ExecutionTrade>();
+  for (const trade of paperTradesQuery.data ?? []) {
+    if (trade.status === "rejected" || trade.status === "cancelled") continue;
+    if (!paperByOpportunity.has(trade.opportunityId)) {
+      paperByOpportunity.set(trade.opportunityId, trade);
+    }
+  }
 
   const all = opportunitiesQuery.data ?? [];
   const unread = notificationsQuery.data ?? [];
@@ -245,6 +281,7 @@ export default function OpportunitiesWidget() {
             const action = tradeAction(opportunity);
             const deadline = deadlineStatus(opportunity.deadline);
             const selected = selectedId === opportunity.id;
+            const paper = paperByOpportunity.get(opportunity.id);
             return (
               <button
                 key={opportunity.id}
@@ -253,7 +290,10 @@ export default function OpportunitiesWidget() {
                 className="scanner-card opps-row"
                 data-selected={selected}
                 aria-current={selected ? "true" : undefined}
-                onClick={() => setSelectedId(opportunity.id)}
+                onClick={() => {
+                  setPaperError(null);
+                  setSelectedId(opportunity.id);
+                }}
               >
                 <span className="opps-main">
                   <span className="opps-top">
@@ -268,6 +308,16 @@ export default function OpportunitiesWidget() {
                     {opportunity.pinned && (
                       <span className="amber text-[10px]" title="Pinned">
                         ★
+                      </span>
+                    )}
+                    {paper && (
+                      <span
+                        className={`scanner-badge ${
+                          paper.status === "open" ? "scanner-badge--up" : "scanner-badge--amber"
+                        }`}
+                        title={`Paper trade ${paper.status.replaceAll("_", " ")}`}
+                      >
+                        PAPER
                       </span>
                     )}
                   </span>
@@ -303,6 +353,26 @@ export default function OpportunitiesWidget() {
             onPin={(opportunity, pinned) => pin.mutate({ id: opportunity.id, pinned })}
             onDismiss={(opportunity) => dismiss.mutate(opportunity.id)}
             onClose={() => setSelectedId(null)}
+            paperTrade={
+              paperByOpportunity.has(selectedId)
+                ? {
+                    id: paperByOpportunity.get(selectedId)!.id,
+                    status: paperByOpportunity.get(selectedId)!.status,
+                  }
+                : null
+            }
+            paperPending={paperEnter.isPending || paperClose.isPending}
+            paperError={paperError}
+            onPaperTrade={() => {
+              setPaperError(null);
+              paperEnter.mutate(selectedId);
+            }}
+            onClosePaper={() => {
+              const trade = paperByOpportunity.get(selectedId);
+              if (!trade) return;
+              setPaperError(null);
+              paperClose.mutate(trade.id);
+            }}
           />
         </ScannerOverlay>
       )}

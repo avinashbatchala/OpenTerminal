@@ -280,10 +280,14 @@ export class ExecutionEngine {
 
   async status(): Promise<ExecutionStatus> {
     const snapshot = await this.broker.snapshot();
+    const openTrades = this.store.listOpenTrades();
     return {
       config: this.store.getConfig(),
       counts: this.store.counts(),
-      openTrades: this.store.listOpenTrades(),
+      openTrades,
+      latestMarks: Object.fromEntries(
+        openTrades.map((trade) => [trade.id, this.store.listMarks(trade.id, 1)[0] ?? null])
+      ),
       equity: this.store.latestEquity(),
       broker: snapshot.ok
         ? { ok: true, cashUsd: snapshot.value.cashUsd, positions: snapshot.value.positions }
