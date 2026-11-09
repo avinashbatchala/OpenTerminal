@@ -2947,3 +2947,46 @@ table.data-table tbody tr:focus-within .watchlist-remove,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Unified tag primitive. Shape and type are fixed; a tone only swaps the
+   three colour variables. */
+.tag {
+  --tag-ink: var(--edge-muted);
+  --tag-line: var(--edge-line);
+  --tag-fill: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--tag-line);
+  border-radius: 4px;
+  background: var(--tag-fill);
+  color: var(--tag-ink);
+  font-family: var(--edge-font);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.tag--up {
+  --tag-ink: var(--edge-up);
+  --tag-line: var(--edge-up-line);
+  --tag-fill: var(--edge-up-soft);
+}
+
+.tag--down {
+  --tag-ink: var(--edge-down);
+  --tag-line: var(--edge-down-line);
+  --tag-fill: var(--edge-down-soft);
+}
+
+.tag--accent {
+  --tag-ink: var(--edge-accent);
+  --tag-line: var(--edge-accent-line);
+  --tag-fill: var(--edge-accent-soft);
+}

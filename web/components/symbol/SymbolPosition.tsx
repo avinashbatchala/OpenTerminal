@@ -11,6 +11,7 @@ import {
 } from "../../lib/paper";
 import { formatUsd } from "../../lib/scanner";
 import { Surface } from "../shell/Surface";
+import Tag from "../ui/Tag";
 
 function Pnl({ value }: { value: number | null }) {
   if (value === null || !Number.isFinite(value)) return <span className="edge-muted">-</span>;
@@ -65,9 +66,9 @@ export default function SymbolPosition({ symbol }: { symbol: string }) {
         <div className="edge-position">
           <div className="edge-position-top">
             <span className="edge-position-strategy">{trade.strategy.replaceAll("_", " ")}</span>
-            <span className={trade.status === "open" ? "edge-chip edge-chip--accent" : "edge-chip"}>
+            <Tag tone={trade.status === "open" ? "accent" : "neutral"}>
               {trade.status.replaceAll("_", " ")}
-            </span>
+            </Tag>
           </div>
           <dl className="edge-position-facts">
             <div>

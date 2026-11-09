@@ -5,6 +5,7 @@ import { mobileChatLayout, type MobileChatLayout } from "../../lib/viewport";
 import { useTerminal } from "../../store/terminal";
 import { useChat } from "./ChatProvider";
 import MarkdownMessage from "./MarkdownMessage";
+import Tag from "../ui/Tag";
 import { useChatResize } from "./useChatResize";
 
 type Props = {
@@ -270,9 +271,9 @@ export default function ChatPanel({ isMobile, onClose }: Props) {
       <div className="panel-title" style={{ cursor: "default" }}>
         <span id="ai-chat-title">AI ASSISTANT</span>
         <span className="flex items-center gap-2">
-          <span className="chat-symbol-pill" title="Active ticker supplied to new messages">
+          <Tag tone="accent" title="Active ticker supplied to new messages">
             {activeSymbol}
-          </span>
+          </Tag>
           <button
             type="button"
             onClick={onClose}
@@ -312,7 +313,7 @@ export default function ChatPanel({ isMobile, onClose }: Props) {
                   <div className="flex items-center gap-2 text-[10px]">
                     <span className="amber">You</span>
                     {message.symbol && (
-                      <span className="chat-symbol-pill chat-symbol-pill--muted">{message.symbol}</span>
+                      <Tag>{message.symbol}</Tag>
                     )}
                     {message.status === "sending" && <span className="dim">sending…</span>}
                   </div>

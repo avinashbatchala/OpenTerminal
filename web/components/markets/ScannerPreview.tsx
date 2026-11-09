@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../lib/api";
 import { STRATEGY_LABELS, formatUsd, type Opportunity } from "../../lib/scanner";
+import Tag, { type TagTone } from "../ui/Tag";
 
-function stateChip(state: Opportunity["state"]) {
-  if (state === "entry_ready") return "edge-chip edge-chip--accent";
-  return "edge-chip";
+function directionTone(direction: Opportunity["direction"]): TagTone {
+  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "neutral";
+}
+
+function directionLabel(direction: Opportunity["direction"]): string {
+  return direction === "bullish" ? "Bullish" : direction === "bearish" ? "Bearish" : "Neutral";
 }
 
 export default function ScannerPreview() {
@@ -60,24 +64,12 @@ export default function ScannerPreview() {
                 <span className="edge-setup-main">
                   <span className="edge-setup-top">
                     <span className="edge-setup-symbol">{opportunity.symbol}</span>
-                    <span className={stateChip(opportunity.state)}>
+                    <Tag tone={opportunity.state === "entry_ready" ? "up" : "neutral"}>
                       {opportunity.state === "entry_ready" ? "Entry ready" : "Watching"}
-                    </span>
-                    <span
-                      className={
-                        opportunity.direction === "bullish"
-                          ? "up"
-                          : opportunity.direction === "bearish"
-                            ? "down"
-                            : "edge-muted"
-                      }
-                    >
-                      {opportunity.direction === "bullish"
-                        ? "Bullish"
-                        : opportunity.direction === "bearish"
-                          ? "Bearish"
-                          : "Neutral"}
-                    </span>
+                    </Tag>
+                    <Tag tone={directionTone(opportunity.direction)}>
+                      {directionLabel(opportunity.direction)}
+                    </Tag>
                   </span>
                   <span className="edge-setup-meta">
                     {STRATEGY_LABELS[opportunity.strategy as keyof typeof STRATEGY_LABELS] ??

@@ -24,6 +24,7 @@ import {
   type ScannerEvent,
 } from "../../lib/scanner";
 import { HealthBadge, StateBadge } from "./StatusBadges";
+import Tag from "../ui/Tag";
 
 type DetailPayload = {
   opportunity: Opportunity;
@@ -136,7 +137,7 @@ export default function OpportunityDetail({
             </h2>
             <StateBadge state={opportunity.state} />
             <HealthBadge health={opportunity.currentHealth} />
-            {opportunity.pinned && <span className="scanner-badge scanner-badge--amber">★ Pinned</span>}
+            {opportunity.pinned && <Tag tone="accent">Pinned</Tag>}
           </div>
           <div className="mt-0.5 text-[10px] dim">
             {opportunity.recipeId}, v{opportunity.recipeVersion}, signal{" "}
@@ -161,13 +162,9 @@ export default function OpportunityDetail({
             </button>
           )}
           {paperTrade && paperTrade.status !== "open" && (
-            <span
-              className={`scanner-badge ${
-                paperTrade.status === "closed" ? "scanner-badge--muted" : "scanner-badge--amber"
-              }`}
-            >
+            <Tag tone={paperTrade.status === "closed" ? "neutral" : "accent"}>
               Paper {paperTrade.status.replaceAll("_", " ")}
-            </span>
+            </Tag>
           )}
           <button
             type="button"
@@ -413,8 +410,8 @@ export default function OpportunityDetail({
           {data.assessment?.status === "ready" && data.assessment.output ? (
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="pill is-brand">Rank {data.assessment.output.rank}/100</span>
-                <span className="pill">{data.assessment.output.confidence} confidence</span>
+                <Tag tone="accent">Rank {data.assessment.output.rank}/100</Tag>
+                <Tag>{data.assessment.output.confidence} confidence</Tag>
               </div>
               <p>{data.assessment.output.summary}</p>
               <p className="dim">{data.assessment.output.thesis}</p>

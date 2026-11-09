@@ -19,6 +19,7 @@ import { HealthBadge, StateBadge } from "../scanner/StatusBadges";
 import OpportunityDetail from "../scanner/OpportunityDetail";
 import ScannerOverlay from "../scanner/ScannerOverlay";
 import ScannerSettings from "../scanner/ScannerSettings";
+import Tag, { type TagTone } from "../ui/Tag";
 
 const ACTIVE_STATES = new Set(["watching", "entry_ready"]);
 const HORIZONS: Horizon[] = ["intraday", "swing"];
@@ -32,8 +33,12 @@ const STATE_RANK: Record<string, number> = {
 
 type View = "active" | "all";
 
-function directionClass(direction: string) {
-  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "dim";
+function directionTone(direction: string): TagTone {
+  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "neutral";
+}
+
+function directionLabel(direction: string): string {
+  return direction.charAt(0).toUpperCase() + direction.slice(1);
 }
 
 export default function OpportunitiesWidget() {
@@ -171,13 +176,9 @@ export default function OpportunitiesWidget() {
     <div className="opportunities-widget">
       <header className="opps-head">
         <div className="opps-head-row">
-          <span
-            className={`scanner-badge ${
-              !status ? "scanner-badge--muted" : status.config.enabled ? "scanner-badge--up" : "scanner-badge--muted"
-            }`}
-          >
-            {!status ? "… Connecting" : status.config.enabled ? "● Live" : "○ Paused"}
-          </span>
+          <Tag tone={status?.config.enabled ? "up" : "neutral"}>
+            {!status ? "Connecting" : status.config.enabled ? "Live" : "Paused"}
+          </Tag>
           <span className="dim">{active.length} active</span>
           {entryReady > 0 && <span className="up">{entryReady} entry ready</span>}
           {unread.length > 0 && <span className="amber">{unread.length} alerts</span>}
@@ -298,31 +299,27 @@ export default function OpportunitiesWidget() {
                 <span className="opps-main">
                   <span className="opps-top">
                     <span className="opps-symbol">{opportunity.symbol}</span>
-                    <span className={`opps-dir ${directionClass(opportunity.direction)}`}>
-                      {opportunity.direction}
-                    </span>
+                    <Tag tone={directionTone(opportunity.direction)}>
+                      {directionLabel(opportunity.direction)}
+                    </Tag>
                     <StateBadge state={opportunity.state} />
                     {opportunity.currentHealth !== "current" && (
                       <HealthBadge health={opportunity.currentHealth} />
                     )}
-                    {opportunity.pinned && (
-                      <span className="amber text-[10px]" title="Pinned">
-                        ★
-                      </span>
-                    )}
+                    {opportunity.pinned && <Tag tone="accent">Pinned</Tag>}
                     {paper && (
-                      <span
-                        className={`scanner-badge ${
+                      <Tag
+                        tone={
                           paper.status === "open"
-                            ? "scanner-badge--up"
+                            ? "up"
                             : paper.status === "closed"
-                              ? "scanner-badge--muted"
-                              : "scanner-badge--amber"
-                        }`}
+                              ? "neutral"
+                              : "accent"
+                        }
                         title={`Paper trade ${paper.status.replaceAll("_", " ")}`}
                       >
                         Paper
-                      </span>
+                      </Tag>
                     )}
                   </span>
                   <span className="opps-meta">

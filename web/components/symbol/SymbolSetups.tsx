@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../lib/api";
 import { STRATEGY_LABELS, formatUsd, type Opportunity } from "../../lib/scanner";
 import { Surface } from "../shell/Surface";
+import Tag from "../ui/Tag";
 
 function isActive(opportunity: Opportunity): boolean {
   return (
@@ -73,9 +74,9 @@ export default function SymbolSetups({ symbol }: { symbol: string }) {
                       {STRATEGY_LABELS[opportunity.strategy as keyof typeof STRATEGY_LABELS] ??
                         opportunity.strategy}
                     </span>
-                    <span className={ready ? "edge-chip edge-chip--accent" : "edge-chip"}>
+                    <Tag tone={ready ? "up" : "neutral"}>
                       {ready ? "Entry ready" : "Watching"}
-                    </span>
+                    </Tag>
                   </div>
                   <dl className="edge-symbol-setup-facts">
                     <div>

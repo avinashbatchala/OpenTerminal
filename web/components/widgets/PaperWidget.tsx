@@ -18,6 +18,7 @@ import {
 } from "../../lib/paper";
 import { STRATEGY_LABELS, formatDateTime, formatUsd } from "../../lib/scanner";
 import ScannerOverlay from "../scanner/ScannerOverlay";
+import Tag from "../ui/Tag";
 
 type Tab = "open" | "closed";
 
@@ -279,17 +280,17 @@ function TradeDetail({
             {trade.closedAt ? `, Closed ${formatDateTime(trade.closedAt)}` : ""}
           </div>
         </div>
-        <span
-          className={`scanner-badge ${
+        <Tag
+          tone={
             trade.status === "open"
-              ? "scanner-badge--up"
+              ? "up"
               : trade.status === "closed"
-                ? "scanner-badge--muted"
-                : "scanner-badge--amber"
-          }`}
+                ? "neutral"
+                : "accent"
+          }
         >
           {statusLabel(trade.status)}
-        </span>
+        </Tag>
       </div>
 
       {latestMark && (
@@ -476,13 +477,9 @@ export default function PaperWidget() {
     <div className="paper-widget">
       <header className="paper-head">
         <div className="paper-head-row">
-          <span
-            className={`scanner-badge ${
-              config?.enabled ? "scanner-badge--up" : "scanner-badge--muted"
-            }`}
-          >
-            {config?.enabled ? "● Auto" : "○ Paused"}
-          </span>
+          <Tag tone={config?.enabled ? "up" : "neutral"}>
+            {config?.enabled ? "Auto" : "Paused"}
+          </Tag>
           {config && (
             <span className="dim">
               entries {config.automation.entries ? "on" : "off"}, exits{" "}
@@ -598,13 +595,9 @@ export default function PaperWidget() {
                   <span className="paper-row-main">
                     <span className="paper-row-top">
                       <span className="paper-symbol">{trade.symbol}</span>
-                      <span
-                        className={`scanner-badge ${
-                          trade.status === "open" ? "scanner-badge--up" : "scanner-badge--amber"
-                        }`}
-                      >
+                      <Tag tone={trade.status === "open" ? "up" : "accent"}>
                         {statusLabel(trade.status)}
-                      </span>
+                      </Tag>
                       <span className="dim text-[10px]">
                         {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
                       </span>
@@ -643,13 +636,9 @@ export default function PaperWidget() {
               <span className="paper-row-main">
                 <span className="paper-row-top">
                   <span className="paper-symbol">{trade.symbol}</span>
-                  <span
-                    className={`scanner-badge ${
-                      trade.status === "closed" ? "scanner-badge--muted" : "scanner-badge--amber"
-                    }`}
-                  >
+                  <Tag tone={trade.status === "closed" ? "neutral" : "accent"}>
                     {statusLabel(trade.status)}
-                  </span>
+                  </Tag>
                   <span className="dim text-[10px]">
                     {STRATEGY_LABELS[trade.strategy] ?? trade.strategy}, {trade.horizon}
                   </span>

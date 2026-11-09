@@ -1,34 +1,31 @@
-const STATE_STYLES: Record<string, { label: string; tone: string }> = {
-  watching: { label: "Watching", tone: "scanner-badge--muted" },
-  entry_ready: { label: "Entry ready", tone: "scanner-badge--up" },
-  invalidated: { label: "Invalidated", tone: "scanner-badge--down" },
-  expired: { label: "Expired", tone: "scanner-badge--muted" },
-  missed: { label: "Missed", tone: "scanner-badge--amber" },
+import Tag, { type TagTone } from "../ui/Tag";
+
+const STATE_STYLES: Record<string, { label: string; tone: TagTone }> = {
+  watching: { label: "Watching", tone: "neutral" },
+  entry_ready: { label: "Entry ready", tone: "up" },
+  invalidated: { label: "Invalidated", tone: "down" },
+  expired: { label: "Expired", tone: "neutral" },
+  missed: { label: "Missed", tone: "accent" },
 };
 
 export function StateBadge({ state }: { state: string }) {
   const style = STATE_STYLES[state] ?? {
     label: state.replaceAll("_", " "),
-    tone: "scanner-badge--muted",
+    tone: "neutral" as TagTone,
   };
   return (
-    <span className={`scanner-badge ${style.tone}`} title={`Lifecycle: ${style.label}`}>
-      <span aria-hidden="true">●</span>
+    <Tag tone={style.tone} title={`Lifecycle: ${style.label}`}>
       {style.label}
-    </span>
+    </Tag>
   );
 }
 
 export function HealthBadge({ health }: { health: string }) {
-  const tone =
-    health === "current"
-      ? "scanner-badge--up"
-      : health === "stale"
-        ? "scanner-badge--amber"
-        : "scanner-badge--down";
+  const tone: TagTone =
+    health === "current" ? "up" : health === "stale" ? "accent" : "down";
   return (
-    <span className={`scanner-badge ${tone}`} title={`Data health: ${health}`}>
+    <Tag tone={tone} title={`Data health: ${health}`}>
       {health}
-    </span>
+    </Tag>
   );
 }

@@ -8,6 +8,7 @@ import type { ExecutionStatus } from "../../lib/paper";
 import { formatUsd } from "../../lib/scanner";
 import { useTerminal } from "../../store/terminal";
 import { SearchIcon } from "./icons";
+import Tag from "../ui/Tag";
 
 type PlatformStatus = {
   ok: boolean;
@@ -79,9 +80,7 @@ export default function MarketBar() {
         <kbd>⌘K</kbd>
       </button>
 
-      <span className="edge-chip" title={`Data source: ${source}`}>
-        {source}
-      </span>
+      <Tag title={`Data source: ${source}`}>{source}</Tag>
 
       <div className="edge-account">
         <span className="edge-account-stat">

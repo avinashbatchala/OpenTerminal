@@ -20,6 +20,7 @@ import OpportunityDetail from "./OpportunityDetail";
 import ScannerOverlay from "./ScannerOverlay";
 import ScannerSettings from "./ScannerSettings";
 import { PageHeader, Surface } from "../shell/Surface";
+import Tag, { type TagTone } from "../ui/Tag";
 
 const ACTIVE_STATES = new Set(["watching", "entry_ready"]);
 const HORIZONS: Horizon[] = ["intraday", "swing"];
@@ -33,8 +34,12 @@ const STATE_RANK: Record<string, number> = {
 
 type View = "active" | "history";
 
-function directionClass(direction: string) {
-  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "edge-muted";
+function directionTone(direction: string): TagTone {
+  return direction === "bullish" ? "up" : direction === "bearish" ? "down" : "neutral";
+}
+
+function directionLabel(direction: string): string {
+  return direction.charAt(0).toUpperCase() + direction.slice(1);
 }
 
 function scanTime(value: string | null | undefined): string {
@@ -252,12 +257,10 @@ export default function ScannerPage() {
       <section className="edge-scanner-band">
         <div className="edge-scanner-band-id">
           <div className="edge-scanner-band-line">
-            <span className={`edge-chip ${status?.config.enabled ? "edge-chip--accent" : ""}`}>
+            <Tag tone={status?.config.enabled ? "accent" : "neutral"}>
               {status ? (status.config.enabled ? "Live" : "Paused") : "Connecting"}
-            </span>
-            {status && !status.readiness.ready && (
-              <span className="edge-chip">Needs setup</span>
-            )}
+            </Tag>
+            {status && !status.readiness.ready && <Tag>Needs setup</Tag>}
             <span className="edge-muted">Last scan {scanTime(status?.lastRun?.startedAt)}</span>
             <span className="edge-muted">Next {scanTime(status?.nextScheduledAt)}</span>
           </div>
@@ -384,14 +387,14 @@ export default function ScannerPage() {
                     <span className="edge-scanner-row-main">
                       <span className="edge-scanner-row-top">
                         <span className="edge-scanner-symbol">{opportunity.symbol}</span>
-                        <span className={`edge-scanner-direction ${directionClass(opportunity.direction)}`}>
-                          {opportunity.direction}
-                        </span>
+                        <Tag tone={directionTone(opportunity.direction)}>
+                          {directionLabel(opportunity.direction)}
+                        </Tag>
                         <StateBadge state={opportunity.state} />
                         {opportunity.currentHealth !== "current" && (
                           <HealthBadge health={opportunity.currentHealth} />
                         )}
-                        {opportunity.pinned && <span className="edge-muted text-[10px]">Pinned</span>}
+                        {opportunity.pinned && <Tag tone="accent">Pinned</Tag>}
                       </span>
                       <span className="edge-scanner-row-sub">
                         {STRATEGY_LABELS[opportunity.strategy] ?? opportunity.strategy}, {opportunity.horizon}
@@ -418,17 +421,17 @@ export default function ScannerPage() {
 
                     <span className="edge-scanner-row-side">
                       {paper && (
-                        <span
-                          className={`scanner-badge ${
+                        <Tag
+                          tone={
                             paper.status === "open"
-                              ? "scanner-badge--up"
+                              ? "up"
                               : paper.status === "closed"
-                                ? "scanner-badge--muted"
-                                : "scanner-badge--amber"
-                          }`}
+                                ? "neutral"
+                                : "accent"
+                          }
                         >
                           Paper
-                        </span>
+                        </Tag>
                       )}
                       <span className={`edge-scanner-deadline ${deadline.tone}`}>{deadline.label}</span>
                       <span className="edge-scanner-checked">
